@@ -1,0 +1,2931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NEON SKY DUEL 3D — Aerial Squad Battle</title>
+  <!-- Three.js r128 CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    /* =========================================================================
+       1. CYBERPUNK STYLING, RADAR & HUD OVERLAYS
+       ========================================================================= */
+    :root {
+      --bg-void: #030510;
+      --hud-bg: rgba(6, 10, 26, 0.92);
+      --modal-bg: rgba(5, 8, 22, 0.96);
+      --cyan: #00f3ff;
+      --emerald: #00ff88;
+      --gold: #ffd700;
+      --crimson: #ff0055;
+      --magenta: #ff007f;
+      --violet: #b026ff;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --font-display: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background-color: var(--bg-void);
+      color: var(--text-main);
+      font-family: var(--font-display);
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    .hidden { display: none !important; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    /* WebGL Canvas */
+    #webglCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      display: block;
+      pointer-events: auto;
+      cursor: crosshair;
+    }
+
+    .popup-container {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 15;
+    }
+
+    .float-popup {
+      position: absolute;
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 900;
+      pointer-events: none;
+      white-space: nowrap;
+      will-change: transform, opacity;
+      transition: opacity 0.4s ease-out;
+    }
+
+    /* 3D Target Lock Frame Overlay */
+    #targetLockFrame {
+      position: fixed;
+      width: 100px;
+      height: 100px;
+      margin-left: -50px;
+      margin-top: -50px;
+      border: 2px dashed var(--cyan);
+      border-radius: 12px;
+      pointer-events: none;
+      z-index: 12;
+      box-shadow: 0 0 16px rgba(0, 243, 255, 0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px;
+      will-change: left, top;
+    }
+
+    #targetLockFrame.melee-ready {
+      border-color: var(--gold);
+      border-style: solid;
+      box-shadow: 0 0 24px rgba(255, 215, 0, 0.85);
+    }
+
+    .lock-corner {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-color: inherit;
+    }
+    .lock-corner.tl { top: -4px; left: -4px; border-top: 3px solid; border-left: 3px solid; }
+    .lock-corner.tr { top: -4px; right: -4px; border-top: 3px solid; border-right: 3px solid; }
+    .lock-corner.bl { bottom: -4px; left: -4px; border-bottom: 3px solid; border-left: 3px solid; }
+    .lock-corner.br { bottom: -4px; right: -4px; border-bottom: 3px solid; border-right: 3px solid; }
+
+    .target-title-tag {
+      font-size: 8px;
+      font-weight: 900;
+      background: rgba(0, 243, 255, 0.25);
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+
+    .target-hp-num-readout {
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      font-weight: 900;
+      color: var(--emerald);
+      letter-spacing: 0.04em;
+    }
+
+    .target-action-prompt {
+      font-size: 8px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.85);
+    }
+
+    /* Off-screen Target Arrow */
+    #offscreenArrow {
+      position: fixed;
+      width: 0;
+      height: 0;
+      border-left: 10px solid transparent;
+      border-right: 10px solid transparent;
+      border-bottom: 20px solid var(--gold);
+      filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.9));
+      pointer-events: none;
+      z-index: 14;
+      transform-origin: 50% 50%;
+      will-change: left, top, transform;
+    }
+
+    /* Telemetry HUD Layer */
+    #hudLayer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 20;
+      padding: 12px 16px;
+      pointer-events: none;
+    }
+
+    .hud-top-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .hud-card {
+      background-color: var(--hud-bg);
+      border: 1.5px solid rgba(0, 243, 255, 0.45);
+      box-shadow: 0 0 20px rgba(0, 243, 255, 0.18), inset 0 0 10px rgba(0, 243, 255, 0.05);
+      border-radius: 12px;
+      padding: 8px 14px;
+      backdrop-filter: blur(8px);
+      pointer-events: auto;
+    }
+
+    .hud-label {
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+
+    .hud-value-md {
+      font-size: clamp(13px, 1.8vw, 18px);
+      font-weight: 800;
+      line-height: 1.15;
+    }
+
+    .hud-flex {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hud-divider {
+      width: 1px;
+      height: 26px;
+      background: rgba(0, 243, 255, 0.25);
+    }
+
+    /* Radar Canvas & Left Column */
+    .radar-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #radarCanvas {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      border: 2px solid var(--cyan);
+      background: rgba(4, 8, 24, 0.88);
+      box-shadow: 0 0 12px rgba(0, 243, 255, 0.3);
+    }
+
+    /* Wave Tracker & Gauges */
+    .hud-center-col {
+      flex: 1;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .wave-card {
+      width: 100%;
+      background: var(--hud-bg);
+      border: 1.5px solid rgba(0, 243, 255, 0.5);
+      border-radius: 12px;
+      padding: 6px 14px;
+      backdrop-filter: blur(8px);
+      text-align: center;
+      pointer-events: auto;
+    }
+
+    .wave-title {
+      font-size: 11px;
+      font-weight: 900;
+      color: var(--cyan);
+      letter-spacing: 0.08em;
+    }
+
+    .wave-subtitle {
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--gold);
+    }
+
+    .hp-bar-card {
+      width: 100%;
+      background: var(--hud-bg);
+      border: 1.5px solid rgba(0, 243, 255, 0.45);
+      border-radius: 10px;
+      padding: 6px 12px;
+      backdrop-filter: blur(8px);
+      pointer-events: auto;
+    }
+
+    .hp-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9.5px;
+      font-weight: 900;
+      margin-bottom: 3px;
+    }
+
+    .hp-track {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: #090e24;
+      overflow: hidden;
+      border: 1px solid rgba(0, 243, 255, 0.3);
+      position: relative;
+    }
+
+    .hp-fill {
+      height: 100%;
+      width: 100%;
+      will-change: width;
+      transition: width 0.12s ease-out;
+    }
+
+    .shield-fill {
+      position: absolute;
+      top: 0;
+      right: 0;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #00f3ff, #38bdf8);
+      opacity: 0.85;
+      will-change: width;
+      transition: width 0.12s ease-out;
+    }
+
+    .player-hp-fill { background: linear-gradient(90deg, #00f3ff, #00ff88); }
+    .target-hp-fill { background: linear-gradient(90deg, #ff0055, #ff007f, #ffd700); }
+
+    .hud-right-col {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    .hud-btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      pointer-events: auto;
+    }
+
+    .hud-btn {
+      position: relative;
+      z-index: 10;
+      pointer-events: auto !important;
+      cursor: pointer !important;
+      touch-action: manipulation;
+      background-color: var(--hud-bg);
+      border: 1.5px solid rgba(0, 243, 255, 0.5);
+      color: var(--cyan);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 9.5px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      backdrop-filter: blur(8px);
+    }
+
+    .hud-btn:hover { border-color: #ffffff; color: #ffffff; }
+
+    .hyper-btn {
+      min-width: 135px;
+      text-align: left;
+      padding: 5px 10px;
+    }
+
+    .hyper-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 9.5px;
+      font-weight: 900;
+      color: var(--gold);
+      margin-bottom: 3px;
+    }
+
+    .hyper-track {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: #090e24;
+      border: 1px solid rgba(255, 215, 0, 0.45);
+      overflow: hidden;
+    }
+
+    .hyper-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #ffd700, #00ff88, #00f3ff);
+      will-change: width;
+    }
+
+    @keyframes hyperReadyGlow {
+      0%, 100% {
+        box-shadow: 0 0 14px rgba(255, 215, 0, 0.9), 0 0 28px rgba(0, 255, 136, 0.7);
+        border-color: #ffd700;
+      }
+      50% {
+        box-shadow: 0 0 22px rgba(0, 243, 255, 0.95), 0 0 34px rgba(0, 255, 136, 0.95);
+        border-color: #00f3ff;
+      }
+    }
+
+    .hyper-ready { animation: hyperReadyGlow 0.75s infinite ease-in-out; }
+
+    /* Announcement Toast Banner */
+    #bannerToast {
+      position: fixed;
+      top: 130px;
+      left: 0;
+      right: 0;
+      z-index: 25;
+      display: flex;
+      justify-content: center;
+      padding: 0 16px;
+      pointer-events: none;
+    }
+
+    .banner-card {
+      background-color: rgba(6, 10, 26, 0.94);
+      border: 2px solid rgba(0, 243, 255, 0.85);
+      box-shadow: 0 0 26px rgba(0, 243, 255, 0.35);
+      border-radius: 14px;
+      padding: 8px 24px;
+      text-align: center;
+    }
+
+    /* Mobile Virtual Touch Controls */
+    #mobileTouchLayer {
+      position: fixed;
+      inset: 0;
+      z-index: 25;
+      pointer-events: none;
+    }
+
+    .touch-pad {
+      position: absolute;
+      bottom: 24px;
+      width: 100px;
+      height: 100px;
+      border-radius: 999px;
+      background: rgba(0, 243, 255, 0.08);
+      border: 2px solid rgba(0, 243, 255, 0.4);
+      pointer-events: auto;
+      touch-action: none;
+    }
+
+    .touch-knob {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 40px;
+      height: 40px;
+      margin-top: -20px;
+      margin-left: -20px;
+      border-radius: 999px;
+      background: rgba(0, 243, 255, 0.35);
+      border: 1.5px solid #00f3ff;
+      pointer-events: none;
+      will-change: transform;
+    }
+
+    #moveJoystick { left: 24px; }
+
+    #mobileActionGrid {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      pointer-events: none;
+      z-index: 26;
+    }
+
+    .mobile-act-btn {
+      position: relative;
+      z-index: 10;
+      pointer-events: auto !important;
+      cursor: pointer !important;
+      touch-action: manipulation;
+      min-width: 68px;
+      height: 40px;
+      padding: 0 6px;
+      border-radius: 10px;
+      background-color: rgba(6, 10, 26, 0.92);
+      border: 1.5px solid rgba(0, 243, 255, 0.6);
+      color: var(--cyan);
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 12px rgba(0, 243, 255, 0.2);
+    }
+
+    .mobile-act-btn:active {
+      background-color: rgba(0, 243, 255, 0.3);
+      border-color: #ffffff;
+      color: #ffffff;
+      transform: scale(0.95);
+    }
+
+    @media (min-width: 900px) and (pointer: fine) {
+      #mobileTouchLayer, #mobileActionGrid { display: none !important; }
+    }
+
+    /* Modals & Menus */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100 !important;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(3, 5, 16, 0.88);
+      backdrop-filter: blur(12px);
+      pointer-events: auto !important;
+    }
+
+    .modal-card {
+      position: relative;
+      z-index: 101;
+      background-color: var(--modal-bg);
+      border: 2px solid rgba(0, 243, 255, 0.7);
+      box-shadow: 0 0 50px rgba(0, 243, 255, 0.3), inset 0 0 30px rgba(0, 255, 136, 0.05);
+      border-radius: 20px;
+      padding: 24px 28px;
+      width: 100%;
+      max-width: 760px;
+      max-height: 94vh;
+      overflow-y: auto;
+      pointer-events: auto !important;
+    }
+
+    .modal-card-sm { max-width: 450px; text-align: center; }
+
+    .modal-badge {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 999px;
+      background: rgba(0, 243, 255, 0.14);
+      border: 1px solid rgba(0, 243, 255, 0.45);
+      color: var(--cyan);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .game-title {
+      margin: 0;
+      font-size: clamp(28px, 5.2vw, 46px);
+      font-weight: 900;
+      font-style: italic;
+      letter-spacing: 0.08em;
+      color: #ffffff;
+      text-shadow: 0 0 16px rgba(0, 243, 255, 0.9), 0 0 36px rgba(0, 255, 136, 0.5);
+    }
+
+    .game-subtitle {
+      margin: 6px auto 16px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #cbd5e1;
+      max-width: 620px;
+    }
+
+    .level-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .level-btn, .cta-btn, .secondary-btn {
+      position: relative !important;
+      z-index: 10 !important;
+      pointer-events: auto !important;
+      cursor: pointer !important;
+      touch-action: manipulation !important;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1.5px solid rgba(255, 255, 255, 0.2);
+      color: #94a3b8;
+      border-radius: 10px;
+      padding: 10px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .level-btn:hover {
+      background: rgba(0, 243, 255, 0.15);
+      border-color: rgba(0, 243, 255, 0.6);
+      color: #ffffff;
+    }
+
+    .level-btn.active {
+      background: rgba(0, 243, 255, 0.25) !important;
+      border-color: #00f3ff !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 16px rgba(0, 243, 255, 0.45) !important;
+    }
+
+    .level-btn-gold.active {
+      background: rgba(255, 215, 0, 0.25) !important;
+      border-color: #ffd700 !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 16px rgba(255, 215, 0, 0.45) !important;
+    }
+
+    .mission-brief-card {
+      background: rgba(0, 243, 255, 0.05);
+      border: 1.5px solid rgba(0, 243, 255, 0.35);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 14px;
+      text-align: left;
+    }
+
+    .brief-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .brief-title {
+      font-size: 13px;
+      font-weight: 900;
+      color: var(--cyan);
+      letter-spacing: 0.08em;
+    }
+
+    .brief-rating {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--gold);
+    }
+
+    .brief-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+
+    .brief-item span {
+      color: #94a3b8;
+      font-weight: 600;
+    }
+
+    .controls-strip {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      font-size: 11px;
+      color: #cbd5e1;
+      text-align: center;
+      line-height: 1.65;
+    }
+
+    .kbd-tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 700;
+    }
+
+    .kbd-tag-gold {
+      background: rgba(255, 215, 0, 0.25);
+      color: #ffd700;
+      border: 1px solid #ffd700;
+    }
+
+    .cta-btn {
+      background: linear-gradient(135deg, #00f3ff 0%, #00ff88 50%, #ffd700 100%);
+      color: #040610;
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 38px;
+      box-shadow: 0 0 28px rgba(0, 243, 255, 0.45);
+      width: 100%;
+      max-width: 320px;
+    }
+
+    .cta-btn:hover { filter: brightness(1.15); }
+    .cta-btn:active { transform: scale(0.96); }
+
+    .secondary-btn {
+      width: 100%;
+      margin-top: 8px;
+      padding: 11px 16px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: #e2e8f0;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .secondary-btn:hover { background: rgba(255, 255, 255, 0.12); }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 16px 0 18px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      text-align: left;
+    }
+
+    .record-pill {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 999px;
+      background: rgba(255, 215, 0, 0.18);
+      border: 1px solid #ffd700;
+      color: #ffd700;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <!-- WebGL Render Canvas -->
+  <canvas id="webglCanvas"></canvas>
+  <div id="popupLayer" class="popup-container"></div>
+
+  <!-- 3D Target Lock Frame -->
+  <div id="targetLockFrame">
+    <div class="lock-corner tl"></div>
+    <div class="lock-corner tr"></div>
+    <div class="lock-corner bl"></div>
+    <div class="lock-corner br"></div>
+    <div id="targetTitleTag" class="target-title-tag">VIPER INTERCEPTOR</div>
+    <div id="targetHpNumReadout" class="target-hp-num-readout">240 / 240 HP</div>
+    <div id="targetActionPrompt" class="target-action-prompt" style="color: var(--cyan);">PLASMA RANGE</div>
+    <div id="targetDistTag" style="font-family: var(--font-mono); font-size: 9px; font-weight: 900; color: var(--gold);">24M</div>
+  </div>
+
+  <!-- Offscreen Arrow Indicator -->
+  <div id="offscreenArrow" class="hidden"></div>
+
+  <!-- Telemetry HUD Layer -->
+  <div id="hudLayer">
+    <div class="hud-top-row">
+
+      <!-- Left Telemetry & Radar Card -->
+      <div class="radar-card tabular-nums">
+        <canvas id="radarCanvas" width="96" height="96"></canvas>
+        <div class="hud-card" style="padding: 4px 10px; text-align: center;">
+          <div class="hud-label" style="color: #00f3ff;">SCORE</div>
+          <div id="scoreVal" class="hud-value-md" style="color: #ffffff;">0</div>
+        </div>
+      </div>
+
+      <!-- Wave Tracker & Health Gauges -->
+      <div class="hud-center-col tabular-nums">
+        <div class="wave-card">
+          <div id="waveTitleText" class="wave-title">LVL 1: CYBER PATROL — WAVE 1/2</div>
+          <div id="waveSubtitleText" class="wave-subtitle">HOSTILES REMAINING: 2</div>
+        </div>
+
+        <div class="hp-bar-card">
+          <div class="hp-head">
+            <span style="color: #00f3ff;">VALKYRIE-X HULL &amp; SHIELD</span>
+            <span id="playerHpText" style="color: #00ff88;">250 / 250 HP (+100 SHD)</span>
+          </div>
+          <div class="hp-track">
+            <div id="playerHpFill" class="hp-fill player-hp-fill"></div>
+            <div id="playerShieldFill" class="shield-fill"></div>
+          </div>
+        </div>
+
+        <div class="hp-bar-card">
+          <div class="hp-head">
+            <span id="targetNameText" style="color: #ff0055;">TARGET: VIPER INTERCEPTOR</span>
+            <span id="targetHpText" style="color: #ff007f;">240 / 240 HP</span>
+          </div>
+          <div class="hp-track">
+            <div id="targetHpFill" class="hp-fill target-hp-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Telemetry Card -->
+      <div class="hud-right-col">
+        <div class="hud-card tabular-nums">
+          <div class="hud-flex">
+            <div>
+              <div class="hud-label" style="color: #00f3ff;">AIR COMBO</div>
+              <div class="hud-value-md" id="comboVal" style="color: #ffffff;">0 HIT</div>
+            </div>
+            <div class="hud-divider"></div>
+            <div>
+              <div class="hud-label" style="color: #ffd700;">BEST</div>
+              <div id="highScoreVal" class="hud-value-md" style="color: #fef08a;">0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hud-btn-row">
+          <button id="targetSwitchHudBtn" type="button" class="hud-btn" style="border-color: var(--gold); color: var(--gold);">[TAB] TARGET</button>
+          <button id="hyperHudBtn" type="button" title="Trigger HYPER OVERDRIVE NOVA BEAM (Q / V)" class="hud-btn hyper-btn">
+            <div class="hyper-head">
+              <span id="hyperLabelVal">OVERDRIVE 0%</span>
+              <span style="color: #94a3b8; font-family: var(--font-mono);">[Q]</span>
+            </div>
+            <div class="hyper-track">
+              <div id="hyperBarFill" class="hyper-fill"></div>
+            </div>
+          </button>
+          <button id="muteBtn" type="button" class="hud-btn">SFX: ON</button>
+          <button id="pauseBtn" type="button" class="hud-btn">❚❚</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Announcement Toast Banner -->
+  <div id="bannerToast" class="hidden">
+    <div class="banner-card">
+      <div id="bannerSubText" class="hud-label" style="color: #00f3ff; margin-bottom: 3px;">AERIAL SQUAD BATTLE</div>
+      <div id="bannerTitleText" class="hud-value-md" style="color: #ffffff; letter-spacing: 0.1em;">WAVE 1 ENGAGED</div>
+    </div>
+  </div>
+
+  <!-- Mobile Virtual Touch Controls -->
+  <div id="mobileTouchLayer">
+    <div id="moveJoystick" class="touch-pad"><div id="moveKnob" class="touch-knob"></div></div>
+  </div>
+
+  <div id="mobileActionGrid">
+    <button id="btnShoot" type="button" class="mobile-act-btn" style="border-color:#ffd700; color:#ffd700; grid-column: span 3; height: 44px; font-size: 11px;"><span>🔥 [SPACE] SHOOT PLASMA</span></button>
+    <button id="btnAscend" type="button" class="mobile-act-btn"><span>▲ ASCEND</span></button>
+    <button id="btnDescend" type="button" class="mobile-act-btn"><span>▼ DESCEND</span></button>
+    <button id="btnSwitch" type="button" class="mobile-act-btn" style="border-color:#ffd700; color:#ffd700;"><span>🎯 TARGET</span></button>
+    <button id="btnDash" type="button" class="mobile-act-btn" style="border-color:#ff007f; color:#ff007f;"><span>⚡ ROLL DASH</span></button>
+    <button id="btnShield" type="button" class="mobile-act-btn" style="border-color:#00ff88; color:#00ff88;"><span>🛡️ AEGIS</span></button>
+    <button id="btnNova" type="button" class="mobile-act-btn" style="border-color:#ffd700; color:#ffd700;"><span>💥 NOVA</span></button>
+  </div>
+
+  <!-- Start Menu Modal -->
+  <div id="menuModal" class="modal-overlay">
+    <div class="modal-card">
+      <div style="text-align: center;">
+        <div class="modal-badge">3D Cyberpunk Aerodynamic Starfighter Combat</div>
+        <h1 class="game-title">NEON SKY DUEL 3D</h1>
+        <p class="game-subtitle">
+          Command your armored <strong style="color: #00f3ff;">Valkyrie-X Starfighter</strong> in tactical multi-enemy sky battles! Outmaneuver tough hostile squadrons, track targets with 3D sky radar, fly forward/backward with <strong style="color: #00f3ff;">W / S</strong>, fire plasma bolts with <strong style="color: #ffd700;">SPACEBAR</strong>, perform blade lunges, and unleash <strong style="color: #ffd700;">HYPER NOVA BEAMS</strong>!
+        </p>
+      </div>
+
+      <!-- Level Selector Grid -->
+      <div class="hud-label" style="margin-bottom: 6px; color: #00f3ff;">SELECT AERIAL SQUAD MISSION:</div>
+      <div class="level-grid">
+        <button id="lvl1Btn" type="button" class="level-btn active" data-lvl="1">LVL 1<br><span style="font-size:9px; opacity:0.8;">PATROL</span></button>
+        <button id="lvl2Btn" type="button" class="level-btn" data-lvl="2">LVL 2<br><span style="font-size:9px; opacity:0.8;">VIPERS</span></button>
+        <button id="lvl3Btn" type="button" class="level-btn" data-lvl="3">LVL 3<br><span style="font-size:9px; opacity:0.8;">FORTRESS</span></button>
+        <button id="lvl4Btn" type="button" class="level-btn" data-lvl="4">LVL 4<br><span style="font-size:9px; opacity:0.8;">ARMADA</span></button>
+        <button id="lvl5Btn" type="button" class="level-btn" data-lvl="5">LVL 5<br><span style="font-size:9px; opacity:0.8;">APEX BOSS</span></button>
+        <button id="lvlEndlessBtn" type="button" class="level-btn level-btn-gold" data-lvl="ENDLESS">ENDLESS<br><span style="font-size:9px; opacity:0.8;">SWARM</span></button>
+      </div>
+
+      <!-- Live Mission Briefing Card -->
+      <div id="missionBriefCard" class="mission-brief-card">
+        <div class="brief-head">
+          <div id="briefTitle" class="brief-title">LVL 1: CYBER PATROL</div>
+          <div id="briefRating" class="brief-rating">DIFFICULTY: ⭐</div>
+        </div>
+        <div class="brief-details">
+          <div class="brief-item"><span>TOTAL HOSTILES:</span> <strong id="briefGoal" style="color:#00ff88;">4 FIGHTERS (2 WAVES)</strong></div>
+          <div class="brief-item"><span>SQUAD BREAKDOWN:</span> <strong id="briefSpeed" style="color:#00f3ff;">2 VIPERS ➔ 2 RAIL-HAWKS</strong></div>
+          <div class="brief-item" style="grid-column: span 2;"><span>SQUAD TACTICS:</span> <strong id="briefThreats" style="color:#ff0055;">Scout Interceptors &amp; Aerial Snipers</strong></div>
+        </div>
+      </div>
+
+      <div class="controls-strip">
+        <div>
+          <strong style="color: #ffd700;">FLIGHT &amp; WEAPONS:</strong>
+          <span class="kbd-tag kbd-tag-gold">W / S</span> Fly Forward (80 m/s) / Backward (55 m/s)<br>
+          <span class="kbd-tag">A / D</span> or <span class="kbd-tag">← / →</span> 360° Turn Left / Right (Wing Bank)<br>
+          <span class="kbd-tag">R / ↑</span> Ascend UP (+Y) &bull;
+          <span class="kbd-tag">C / Ctrl / ↓</span> Descend DOWN (-Y)<br>
+          <span class="kbd-tag kbd-tag-gold">SPACEBAR</span> Dual Plasma Volley (2x14 Dmg) / Close-Range Blade Lunge (60 Dmg)<br>
+          <span class="kbd-tag">Tab / E</span> Target Lock &bull;
+          <span class="kbd-tag">Shift / L</span> Roll Dash &bull;
+          <span class="kbd-tag">G / X</span> Aegis Shield &bull;
+          <span class="kbd-tag">Q / V</span> HYPER NOVA BEAM
+        </div>
+        <div style="margin-top: 4px;">
+          <strong style="color: #00ff88;">Mobile Touch Controls:</strong> Left Joystick (360° Turn &amp; Forward/Back) &bull; Touch Buttons for ▲ UP, ▼ DOWN, [SPACE] SHOOT, Target, Roll &amp; Nova
+        </div>
+      </div>
+
+      <div style="text-align: center;">
+        <button id="startBtn" type="button" class="cta-btn">
+          ⚔️ ENGAGE SQUAD BATTLE
+        </button>
+        <div style="margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);">
+          BEST HIGH SCORE: <strong id="menuHighScore" style="color: var(--gold);">0</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause Modal -->
+  <div id="pauseModal" class="modal-overlay hidden">
+    <div class="modal-card modal-card-sm" style="border-color: rgba(0, 243, 255, 0.8);">
+      <div class="hud-label" style="color: #00f3ff; margin-bottom: 4px;">AERIAL SQUAD SIMULATION SUSPENDED</div>
+      <h2 style="margin: 0 0 18px; font-size: 28px; font-weight: 900; letter-spacing: 0.08em;">PAUSED</h2>
+      <button id="resumeBtn" type="button" class="cta-btn" style="width: 100%; max-width: 100%;">
+        ▶ RESUME SQUAD BATTLE
+      </button>
+      <button id="restartPauseBtn" type="button" class="secondary-btn">
+        ↺ RESTART MISSION
+      </button>
+      <button id="menuPauseBtn" type="button" class="secondary-btn">
+        ≡ MAIN MENU
+      </button>
+    </div>
+  </div>
+
+  <!-- Victory / Defeat Modal -->
+  <div id="gameOverModal" class="modal-overlay hidden">
+    <div class="modal-card modal-card-sm" style="border-color: rgba(0, 255, 136, 0.85);">
+      <div id="modalHeaderSub" class="hud-label" style="color: #00ff88; margin-bottom: 4px;">ALL HOSTILE WAVES ELIMINATED</div>
+      <h2 id="modalHeaderTitle" style="margin: 0; font-size: 28px; font-weight: 900; letter-spacing: 0.06em; text-shadow: 0 0 18px rgba(0,255,136,0.8);">
+        MISSION VICTORY
+      </h2>
+
+      <div id="newRecordBadge" class="record-pill hidden" style="margin-top: 8px;">★ NEW HIGH SCORE ★</div>
+
+      <div class="stats-grid tabular-nums">
+        <div>
+          <div class="hud-label" style="color: #94a3b8;">FINAL SCORE</div>
+          <div id="finalScoreVal" class="hud-value-md" style="color: #00f3ff;">0</div>
+        </div>
+        <div>
+          <div class="hud-label" style="color: #94a3b8;">BEST SCORE</div>
+          <div id="finalBestVal" class="hud-value-md" style="color: #ffd700;">0</div>
+        </div>
+        <div>
+          <div class="hud-label" style="color: #94a3b8;">HOSTILES DESTROYED</div>
+          <div id="finalKillsVal" class="hud-value-md" style="font-size: 14px; color: #00ff88;">0</div>
+        </div>
+        <div>
+          <div class="hud-label" style="color: #94a3b8;">MAX AIR COMBO</div>
+          <div id="finalComboVal" class="hud-value-md" style="font-size: 14px; color: #b026ff;">0 HIT</div>
+        </div>
+      </div>
+
+      <button id="nextLevelBtn" type="button" class="cta-btn" style="width: 100%; max-width: 100%;">
+        ⚔️ NEXT SQUAD MISSION
+      </button>
+      <button id="restartGameOverBtn" type="button" class="secondary-btn">
+        ↻ REPLAY MISSION
+      </button>
+      <button id="menuGameOverBtn" type="button" class="secondary-btn">
+        ≡ MAIN MENU
+      </button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 2. STORAGE & PROCEDURAL WEB AUDIO SYNTHESIZER
+      // =========================================================================
+      const STORAGE_KEY = 'neonSkyDuel3DHighScore_Rebalanced_v5';
+      let audioCtx = null;
+      let isMuted = false;
+      const soundCooldowns = {};
+
+      function safeGetHighScore() {
+        try {
+          const v = parseInt(window.localStorage.getItem(STORAGE_KEY) || '0', 10);
+          return Number.isFinite(v) && v > 0 ? v : 0;
+        } catch (err) { return 0; }
+      }
+
+      function safeSetHighScore(v) {
+        try {
+          window.localStorage.setItem(STORAGE_KEY, String(Math.max(0, Math.floor(v))));
+        } catch (err) {}
+      }
+
+      function canPlaySound(channel, minGapMs) {
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        if (soundCooldowns[channel] && now - soundCooldowns[channel] < minGapMs) return false;
+        soundCooldowns[channel] = now;
+        return true;
+      }
+
+      function ensureAudio() {
+        try {
+          if (!audioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (Ctx) audioCtx = new Ctx();
+          }
+          if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume().catch(function () {});
+          }
+        } catch (err) { audioCtx = null; }
+      }
+
+      function playSynth(fStart, fEnd, dur, wave, vol, delay) {
+        if (isMuted) return;
+        try {
+          ensureAudio();
+          if (!audioCtx) return;
+          const t0 = audioCtx.currentTime + (delay || 0);
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = wave || 'sawtooth';
+          osc.frequency.setValueAtTime(fStart, t0);
+          if (fEnd && fEnd !== fStart) {
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, fEnd), t0 + dur);
+          }
+          gain.gain.setValueAtTime(0.0001, t0);
+          gain.gain.linearRampToValueAtTime(vol || 0.08, t0 + 0.005);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(t0);
+          osc.stop(t0 + dur + 0.015);
+        } catch (err) {}
+      }
+
+      function playNoiseBurst(dur, filterFreq, vol) {
+        if (isMuted) return;
+        try {
+          ensureAudio();
+          if (!audioCtx) return;
+          const sr = audioCtx.sampleRate;
+          const count = Math.max(1, Math.floor(sr * dur));
+          const buf = audioCtx.createBuffer(1, count, sr);
+          const ch = buf.getChannelData(0);
+          for (let i = 0; i < count; i++) ch[i] = Math.random() * 2 - 1;
+
+          const src = audioCtx.createBufferSource();
+          src.buffer = buf;
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(filterFreq || 600, audioCtx.currentTime);
+          filter.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + dur);
+
+          const gain = audioCtx.createGain();
+          gain.gain.setValueAtTime(vol || 0.12, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0008, audioCtx.currentTime + dur);
+
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(audioCtx.destination);
+          src.start();
+        } catch (err) {}
+      }
+
+      const sfx = {
+        uiClick: function () { playSynth(800, 1200, 0.03, 'sine', 0.06, 0); },
+        targetSwitch: function () { playSynth(1200, 1800, 0.04, 'triangle', 0.08, 0); },
+        laser: function () {
+          if (!canPlaySound('laser', 45)) return;
+          playSynth(1200, 320, 0.05, 'sawtooth', 0.05, 0);
+        },
+        laserHit: function () {
+          if (!canPlaySound('laserHit', 35)) return;
+          playSynth(550, 1600, 0.08, 'sawtooth', 0.1, 0);
+        },
+        bladeSlash: function () {
+          playSynth(300, 1800, 0.1, 'triangle', 0.14, 0);
+          playNoiseBurst(0.08, 1200, 0.12);
+        },
+        dash: function () { playSynth(250, 1100, 0.12, 'sine', 0.09, 0); },
+        parry: function () {
+          playSynth(1400, 2200, 0.12, 'triangle', 0.16, 0);
+        },
+        railCharge: function () {
+          if (!canPlaySound('railCharge', 100)) return;
+          playSynth(200, 900, 0.4, 'triangle', 0.08, 0);
+        },
+        beamFire: function () {
+          playNoiseBurst(0.5, 2000, 0.22);
+          playSynth(450, 110, 0.5, 'sawtooth', 0.22, 0);
+        },
+        explosion: function () { playNoiseBurst(0.4, 550, 0.22); },
+        victory: function () {
+          playSynth(523, 1046, 0.2, 'triangle', 0.15, 0);
+          playSynth(659, 1318, 0.25, 'triangle', 0.15, 0.1);
+          playSynth(783, 1567, 0.35, 'triangle', 0.18, 0.2);
+        }
+      };
+
+      // =========================================================================
+      // 3. REBALANCED MULTI-WAVE LEVEL SQUAD DEFINITIONS & SPECS
+      // =========================================================================
+      const LEVEL_DEFS = {
+        1: {
+          name: 'CYBER PATROL',
+          rating: '⭐',
+          waves: [
+            { name: 'WAVE 1/2', enemies: [{ type: 'viper' }, { type: 'viper' }] },
+            { name: 'WAVE 2/2', enemies: [{ type: 'railhawk' }, { type: 'railhawk' }] }
+          ],
+          breakdownText: '2 VIPERS ➔ 2 RAIL-HAWKS',
+          threatText: 'Scout Interceptors & Aerial Snipers'
+        },
+        2: {
+          name: 'VIPER SQUADRON',
+          rating: '⭐⭐',
+          waves: [
+            { name: 'WAVE 1/2', enemies: [{ type: 'viper' }, { type: 'viper' }, { type: 'viper' }] },
+            { name: 'WAVE 2/2', enemies: [{ type: 'railhawk' }, { type: 'railhawk' }, { type: 'viper', isLeader: true }] }
+          ],
+          breakdownText: '3 VIPERS ➔ 2 RAIL-HAWKS + VIPER LEADER',
+          threatText: 'Rapid Interceptors & Squadron Leader'
+        },
+        3: {
+          name: 'ORBITAL FORTRESS',
+          rating: '⭐⭐⭐',
+          waves: [
+            { name: 'WAVE 1/3', enemies: [{ type: 'viper' }, { type: 'viper' }, { type: 'viper' }] },
+            { name: 'WAVE 2/3', enemies: [{ type: 'railhawk' }, { type: 'railhawk' }, { type: 'railhawk' }] },
+            { name: 'WAVE 3/3', enemies: [{ type: 'juggernaut' }, { type: 'juggernaut' }] }
+          ],
+          breakdownText: '3 VIPERS ➔ 3 RAIL-HAWKS ➔ 2 HEAVY GUNSHIPS',
+          threatText: 'Telegraphed Rail Beams & Armored Gunships'
+        },
+        4: {
+          name: 'CRIMSON ARMADA',
+          rating: '⭐⭐⭐⭐',
+          waves: [
+            { name: 'WAVE 1/3', enemies: [{ type: 'viper' }, { type: 'viper' }, { type: 'viper' }, { type: 'viper' }] },
+            { name: 'WAVE 2/3', enemies: [{ type: 'railhawk' }, { type: 'railhawk' }, { type: 'railhawk' }, { type: 'juggernaut' }] },
+            { name: 'WAVE 3/3', enemies: [{ type: 'viper', isCommander: true }, { type: 'juggernaut', isCommander: true }] }
+          ],
+          breakdownText: '4 VIPERS ➔ 3 SNIPERS + HEAVY ➔ 2 COMMANDERS',
+          threatText: 'Crossfire Snipers & Heavy Armored Commanders'
+        },
+        5: {
+          name: 'APEX THRONE ASSAULT',
+          rating: '⭐⭐⭐⭐⭐',
+          waves: [
+            { name: 'WAVE 1/3', enemies: [{ type: 'viper' }, { type: 'viper' }, { type: 'viper' }, { type: 'viper' }] },
+            { name: 'WAVE 2/3', enemies: [{ type: 'juggernaut' }, { type: 'juggernaut' }, { type: 'railhawk' }, { type: 'railhawk' }] },
+            { name: 'WAVE 3/3', enemies: [{ type: 'boss' }, { type: 'viper' }, { type: 'viper' }] }
+          ],
+          breakdownText: '4 INTERCEPTORS ➔ 4 HEAVY/SNIPERS ➔ APEX OMEGA ARCHON',
+          threatText: 'Multi-Phase Archon Boss & Royal Escorts'
+        },
+        ENDLESS: {
+          name: 'ENDLESS SWARM',
+          rating: '♾️ INFINITE',
+          waves: [],
+          breakdownText: 'CONTINUOUS RECYCLING SQUADS (+12% HP/WAVE)',
+          threatText: 'Infinite Escalating Starfighter Waves'
+        }
+      };
+
+      const ENEMY_SPECS = {
+        viper: { name: 'VIPER INTERCEPTOR', colorHex: 0xff0055, defaultEmissive: 0x550011, hp: 240, speed: 28, rad: 2.5 },
+        railhawk: { name: 'RAIL-HAWK SNIPER', colorHex: 0xb026ff, defaultEmissive: 0x330066, hp: 320, speed: 20, rad: 2.8 },
+        juggernaut: { name: 'JUGGERNAUT GUNSHIP', colorHex: 0xffa000, defaultEmissive: 0x663300, hp: 540, speed: 15, rad: 4.2 },
+        boss: { name: 'APEX OMEGA ARCHON', colorHex: 0xffd700, defaultEmissive: 0x665500, hp: 1400, speed: 26, rad: 6.8 }
+      };
+
+      // =========================================================================
+      // 4. GAME STATE & DOM CACHE
+      // =========================================================================
+      const dom = {
+        scoreVal: document.getElementById('scoreVal'),
+        highScoreVal: document.getElementById('highScoreVal'),
+        waveTitleText: document.getElementById('waveTitleText'),
+        waveSubtitleText: document.getElementById('waveSubtitleText'),
+        playerHpText: document.getElementById('playerHpText'),
+        playerHpFill: document.getElementById('playerHpFill'),
+        playerShieldFill: document.getElementById('playerShieldFill'),
+        targetNameText: document.getElementById('targetNameText'),
+        targetHpText: document.getElementById('targetHpText'),
+        targetHpFill: document.getElementById('targetHpFill'),
+        comboVal: document.getElementById('comboVal'),
+        targetSwitchHudBtn: document.getElementById('targetSwitchHudBtn'),
+        hyperHudBtn: document.getElementById('hyperHudBtn'),
+        hyperLabelVal: document.getElementById('hyperLabelVal'),
+        hyperBarFill: document.getElementById('hyperBarFill'),
+        muteBtn: document.getElementById('muteBtn'),
+        pauseBtn: document.getElementById('pauseBtn'),
+        bannerToast: document.getElementById('bannerToast'),
+        bannerSubText: document.getElementById('bannerSubText'),
+        bannerTitleText: document.getElementById('bannerTitleText'),
+        popupLayer: document.getElementById('popupLayer'),
+        targetLockFrame: document.getElementById('targetLockFrame'),
+        targetTitleTag: document.getElementById('targetTitleTag'),
+        targetHpNumReadout: document.getElementById('targetHpNumReadout'),
+        targetActionPrompt: document.getElementById('targetActionPrompt'),
+        targetDistTag: document.getElementById('targetDistTag'),
+        offscreenArrow: document.getElementById('offscreenArrow'),
+        radarCanvas: document.getElementById('radarCanvas'),
+        menuModal: document.getElementById('menuModal'),
+        menuHighScore: document.getElementById('menuHighScore'),
+        pauseModal: document.getElementById('pauseModal'),
+        gameOverModal: document.getElementById('gameOverModal'),
+        modalHeaderSub: document.getElementById('modalHeaderSub'),
+        modalHeaderTitle: document.getElementById('modalHeaderTitle'),
+        newRecordBadge: document.getElementById('newRecordBadge'),
+        finalScoreVal: document.getElementById('finalScoreVal'),
+        finalBestVal: document.getElementById('finalBestVal'),
+        finalKillsVal: document.getElementById('finalKillsVal'),
+        finalComboVal: document.getElementById('finalComboVal'),
+        nextLevelBtn: document.getElementById('nextLevelBtn'),
+        restartPauseBtn: document.getElementById('restartPauseBtn'),
+        menuPauseBtn: document.getElementById('menuPauseBtn'),
+        restartGameOverBtn: document.getElementById('restartGameOverBtn'),
+        menuGameOverBtn: document.getElementById('menuGameOverBtn'),
+        briefTitle: document.getElementById('briefTitle'),
+        briefRating: document.getElementById('briefRating'),
+        briefGoal: document.getElementById('briefGoal'),
+        briefSpeed: document.getElementById('briefSpeed'),
+        briefThreats: document.getElementById('briefThreats'),
+        startBtn: document.getElementById('startBtn'),
+        resumeBtn: document.getElementById('resumeBtn')
+      };
+
+      let radarCtx = dom.radarCanvas ? dom.radarCanvas.getContext('2d') : null;
+
+      let gameState = 'MENU';
+      let selectedLevelKey = 1;
+
+      let score = 0;
+      let highScore = safeGetHighScore();
+      let comboHits = 0;
+      let maxComboHits = 0;
+      let comboTimer = 0;
+      let totalEnemiesKilled = 0;
+
+      // Player Stats (Rebalanced)
+      let playerHp = 250;
+      let playerMaxHp = 250;
+      let playerShield = 100;
+      let playerMaxShield = 100;
+      let lastTimePlayerHit = 0;
+
+      let currentWaveIndex = 0;
+      let activeEnemyList = [];
+      let lockedTargetIndex = 0;
+
+      let overdriveCharge = 0;
+      let overdriveActiveTimer = 0;
+
+      let playerYaw = 0;
+      let playerRoll = 0;
+
+      let playerInvulnTimer = 0;
+      let playerDashCooldown = 0;
+      let playerShieldTimer = 0;
+      let playerFireTimer = 0;
+      let playerBladeCooldown = 0;
+
+      let bannerTimer = 0;
+      let cameraShakeTime = 0;
+      let cameraShakeMag = 0;
+
+      // Dual Input Tracking (e.code + e.key)
+      const keys = {};
+      function isKeyDown(codeName, keyChar) {
+        return keys[codeName] || (keyChar && keys['char_' + keyChar]);
+      }
+
+      function clearAllKeys() {
+        for (let k in keys) delete keys[k];
+      }
+
+      const joystickMove = { active: false, id: null, dx: 0, dy: 0 };
+      const touchBtns = { ascend: false, descend: false, shoot: false };
+
+      const ARENA_RADIUS = 140.0;
+
+      // =========================================================================
+      // ZERO-LAG MEMORY ALLOCATION PRE-ALLOCATED SCRATCH BUFFERS
+      // =========================================================================
+      const tempVec3_1 = new THREE.Vector3();
+      const tempVec3_2 = new THREE.Vector3();
+      const tempVec3_3 = new THREE.Vector3();
+      const tempQuat = new THREE.Quaternion();
+      const tempEuler = new THREE.Euler();
+      const tempMatrix4 = new THREE.Matrix4();
+      const screenPosVec = new THREE.Vector3();
+
+      // Cache DOM strings to avoid reflows
+      let cachedScoreText = '', cachedPlayerHpText = '', cachedTargetHpText = '', cachedComboText = '', cachedHyperText = '';
+
+      // =========================================================================
+      // SHARED GEOMETRIES & MATERIALS
+      // =========================================================================
+      let sharedUnitCylinderGeo, sharedSphereGeo, sharedBoltGeo, sharedSparkGeo, sharedUnitRingGeo;
+      let sharedCyanMat, sharedMagentaMat, sharedGreenMat, sharedGoldMat, sharedWireCyanMat;
+
+      function initSharedAssets() {
+        // Unit Cylinder with pivot at Y=0 for GPU-scaled altitude drop-lines
+        sharedUnitCylinderGeo = new THREE.CylinderGeometry(0.12, 0.12, 1.0, 6);
+        sharedUnitCylinderGeo.translate(0, -0.5, 0);
+
+        sharedSphereGeo = new THREE.SphereGeometry(0.6, 6, 6);
+        sharedBoltGeo = new THREE.CylinderGeometry(0.18, 0.18, 3.2, 6);
+        sharedBoltGeo.rotateX(Math.PI / 2);
+        sharedSparkGeo = new THREE.OctahedronGeometry(0.45, 0);
+
+        sharedUnitRingGeo = new THREE.RingGeometry(1.2, 2.0, 16);
+        sharedUnitRingGeo.rotateX(-Math.PI / 2);
+
+        sharedCyanMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
+        sharedMagentaMat = new THREE.MeshBasicMaterial({ color: 0xff0055 });
+        sharedGreenMat = new THREE.MeshBasicMaterial({ color: 0x00ff88 });
+        sharedGoldMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+        sharedWireCyanMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, wireframe: true });
+      }
+
+      // =========================================================================
+      // POOLED PROJECTILE ENGINE (MAX 90 POOLED BULLETS)
+      // =========================================================================
+      const MAX_PROJECTILES = 90;
+      const projectilePool = [];
+
+      function initProjectilePool() {
+        for (let i = 0; i < MAX_PROJECTILES; i++) {
+          const mesh = new THREE.Mesh(sharedBoltGeo, sharedCyanMat);
+          mesh.visible = false;
+          scene.add(mesh);
+          projectilePool.push({
+            mesh: mesh,
+            active: false,
+            dir: new THREE.Vector3(),
+            speed: 0,
+            dmg: 0,
+            radius: 1.2,
+            isPlayer: false,
+            life: 0
+          });
+        }
+      }
+
+      function spawnPooledProjectile(origin, dir, speed, colorHex, isPlayer, dmg) {
+        for (let i = 0; i < MAX_PROJECTILES; i++) {
+          const p = projectilePool[i];
+          if (!p.active) {
+            p.active = true;
+            p.mesh.position.copy(origin);
+            p.dir.copy(dir).normalize();
+            p.mesh.rotation.set(0, Math.atan2(p.dir.x, p.dir.z), 0);
+            p.speed = speed;
+            p.dmg = dmg;
+            p.isPlayer = isPlayer;
+            p.radius = isPlayer ? 1.4 : 1.2;
+            p.life = 2.2;
+            p.mesh.material = colorHex === 0x00f3ff ? sharedCyanMat : colorHex === 0x00ff88 ? sharedGreenMat : colorHex === 0xffd700 ? sharedGoldMat : sharedMagentaMat;
+            p.mesh.visible = true;
+            return p;
+          }
+        }
+        return null;
+      }
+
+      // =========================================================================
+      // POOLED SPEED-LINE DUST PARTICLES (VISUAL SPEED FEEDBACK)
+      // =========================================================================
+      const MAX_SPEED_PARTICLES = 30;
+      const speedParticlePool = [];
+
+      function initSpeedParticles() {
+        const lineGeo = new THREE.CylinderGeometry(0.06, 0.06, 4.0, 4);
+        lineGeo.rotateX(Math.PI / 2);
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.6 });
+
+        for (let i = 0; i < MAX_SPEED_PARTICLES; i++) {
+          const mesh = new THREE.Mesh(lineGeo, lineMat);
+          mesh.visible = false;
+          scene.add(mesh);
+          speedParticlePool.push({ mesh: mesh, active: false });
+        }
+      }
+
+      function updateSpeedParticles(dt, playerPos, fwdX, fwdZ, thrustActive) {
+        for (let i = 0; i < MAX_SPEED_PARTICLES; i++) {
+          const sp = speedParticlePool[i];
+          if (thrustActive) {
+            if (!sp.active || sp.mesh.position.distanceTo(playerPos) > 40) {
+              sp.active = true;
+              sp.mesh.position.set(
+                playerPos.x + (Math.random() - 0.5) * 32,
+                playerPos.y + (Math.random() - 0.5) * 20,
+                playerPos.z + (Math.random() - 0.5) * 32
+              );
+              sp.mesh.rotation.set(0, Math.atan2(fwdX, fwdZ), 0);
+              sp.mesh.visible = true;
+            }
+            sp.mesh.position.x -= fwdX * 90 * dt;
+            sp.mesh.position.z -= fwdZ * 90 * dt;
+          } else {
+            sp.active = false;
+            sp.mesh.visible = false;
+          }
+        }
+      }
+
+      // =========================================================================
+      // POOLED PARTICLE SYSTEM ENGINE (MAX 75 POOLED SPARKS)
+      // =========================================================================
+      const MAX_PARTICLES = 75;
+      const particlePool = [];
+
+      function initParticlePool() {
+        for (let i = 0; i < MAX_PARTICLES; i++) {
+          const mesh = new THREE.Mesh(sharedSparkGeo, sharedGoldMat);
+          mesh.visible = false;
+          scene.add(mesh);
+          particlePool.push({
+            mesh: mesh,
+            active: false,
+            vel: new THREE.Vector3(),
+            life: 0,
+            maxLife: 0.35
+          });
+        }
+      }
+
+      function spawnExplosionParticles(pos, colorHex, count) {
+        let spawned = 0;
+        for (let i = 0; i < MAX_PARTICLES && spawned < count; i++) {
+          const pt = particlePool[i];
+          if (!pt.active) {
+            pt.active = true;
+            pt.mesh.position.copy(pos);
+            pt.vel.set(
+              (Math.random() - 0.5) * 26,
+              (Math.random() - 0.5) * 26,
+              (Math.random() - 0.5) * 26
+            );
+            pt.life = 0.35;
+            pt.maxLife = 0.35;
+            pt.mesh.material = colorHex === 0x00f3ff ? sharedCyanMat : colorHex === 0x00ff88 ? sharedGreenMat : sharedGoldMat;
+            pt.mesh.visible = true;
+            spawned++;
+          }
+        }
+      }
+
+      function updateParticles(dt) {
+        for (let i = 0; i < MAX_PARTICLES; i++) {
+          const pt = particlePool[i];
+          if (pt.active) {
+            pt.life -= dt;
+            if (pt.life <= 0) {
+              pt.active = false;
+              pt.mesh.visible = false;
+            } else {
+              pt.mesh.position.addScaledVector(pt.vel, dt);
+              const scale = Math.max(0.1, pt.life / pt.maxLife);
+              pt.mesh.scale.set(scale, scale, scale);
+            }
+          }
+        }
+      }
+
+      // =========================================================================
+      // POOLED FLOATING POPUP DOM ELEMENTS (MAX 10 RECYCLED DIVS)
+      // =========================================================================
+      const MAX_POPUPS = 10;
+      const popupPool = [];
+
+      function initPopupPool() {
+        for (let i = 0; i < MAX_POPUPS; i++) {
+          const el = document.createElement('div');
+          el.className = 'float-popup hidden';
+          dom.popupLayer.appendChild(el);
+          popupPool.push({ el: el, active: false, timer: 0 });
+        }
+      }
+
+      function spawnFloatingPopup(text, colorHex) {
+        for (let i = 0; i < MAX_POPUPS; i++) {
+          const p = popupPool[i];
+          if (!p.active) {
+            p.active = true;
+            p.timer = 0.65;
+            p.el.textContent = text;
+            p.el.style.color = colorHex || '#00f3ff';
+            p.el.style.textShadow = '0 0 10px ' + (colorHex || '#00f3ff');
+            p.el.style.transform = 'translate3d(-50%, -50%, 0)';
+            p.el.style.left = '50%';
+            p.el.style.top = '25%';
+            p.el.style.opacity = '1';
+            p.el.classList.remove('hidden');
+            return;
+          }
+        }
+      }
+
+      function updatePopups(dt) {
+        for (let i = 0; i < MAX_POPUPS; i++) {
+          const p = popupPool[i];
+          if (p.active) {
+            p.timer -= dt;
+            if (p.timer <= 0) {
+              p.active = false;
+              p.el.classList.add('hidden');
+            } else {
+              const opacity = Math.min(1, p.timer / 0.2);
+              p.el.style.opacity = opacity.toFixed(2);
+              p.el.style.transform = `translate3d(-50%, ${-50 - (0.65 - p.timer) * 85}px, 0)`;
+            }
+          }
+        }
+      }
+
+      // =========================================================================
+      // 5. THREE.JS SCENE & AERODYNAMIC STARFIGHTER GENERATOR
+      // =========================================================================
+      const canvas = document.getElementById('webglCanvas');
+      let renderer, scene, camera;
+      let playerStarfighter, novaBeamMesh, empSphereMesh;
+      let skyDeckFloor, skyDeckGrid, upperCeilingGrid, arenaPillarsGroup;
+
+      const afterimagesList = [];
+
+      function initThreeJS() {
+        renderer = new THREE.WebGLRenderer({
+          canvas: canvas,
+          antialias: false,
+          powerPreference: 'high-performance',
+          stencil: false
+        });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x030510);
+        scene.fog = new THREE.FogExp2(0x030510, 0.0028);
+
+        camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1200);
+        camera.position.set(0, 20, 35);
+        camera.up.set(0, 1, 0);
+
+        // Single Global Ambient & Directional Light
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.95);
+        dirLight.position.set(50, 100, 50);
+        scene.add(dirLight);
+
+        initSharedAssets();
+        initProjectilePool();
+        initSpeedParticles();
+        initParticlePool();
+        initPopupPool();
+
+        // Build High-Visibility Holographic Arena Floor, Ceiling & Boundary Pillars
+        buildHighVisArena();
+
+        // Build Player Starfighter ("VALKYRIE-X")
+        playerStarfighter = createAerodynamicStarfighter('valkyrie', 0x00f3ff, 0x00ff88, 'VALKYRIE-X');
+        playerStarfighter.group.rotation.order = 'YXZ';
+        scene.add(playerStarfighter.group);
+        scene.add(playerStarfighter.dropLineMesh);
+        scene.add(playerStarfighter.groundRingMesh);
+
+        // Nova Beam Mesh
+        const beamGeo = new THREE.CylinderGeometry(2.8, 2.8, 300, 12);
+        beamGeo.rotateX(Math.PI / 2);
+        const beamMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.85 });
+        novaBeamMesh = new THREE.Mesh(beamGeo, beamMat);
+        novaBeamMesh.visible = false;
+        scene.add(novaBeamMesh);
+
+        // EMP Overdrive Sphere
+        const empGeo = new THREE.SphereGeometry(1, 16, 16);
+        const empMat = new THREE.MeshBasicMaterial({ color: 0xffd700, wireframe: true, transparent: true, opacity: 0.85 });
+        empSphereMesh = new THREE.Mesh(empGeo, empMat);
+        empSphereMesh.visible = false;
+        scene.add(empSphereMesh);
+      }
+
+      function buildHighVisArena() {
+        const floorGeo = new THREE.PlaneGeometry(300, 300);
+        floorGeo.rotateX(-Math.PI / 2);
+        const floorMat = new THREE.MeshLambertMaterial({ color: 0x050a1f });
+        skyDeckFloor = new THREE.Mesh(floorGeo, floorMat);
+        skyDeckFloor.position.y = 0;
+        scene.add(skyDeckFloor);
+
+        skyDeckGrid = new THREE.GridHelper(280, 56, 0x00f3ff, 0xff007f);
+        skyDeckGrid.position.y = 0.1;
+        scene.add(skyDeckGrid);
+
+        // Compass Rings at Y=0 Floor
+        for (let r of [30, 70, 120]) {
+          const ringGeo = new THREE.RingGeometry(r - 0.4, r + 0.4, 32);
+          ringGeo.rotateX(-Math.PI / 2);
+          const ringMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+          const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+          ringMesh.position.y = 0.15;
+          scene.add(ringMesh);
+        }
+
+        // Upper Sky-Grid Ceiling at Y=110
+        upperCeilingGrid = new THREE.GridHelper(280, 28, 0x00f3ff, 0x00ff88);
+        upperCeilingGrid.position.y = 110;
+        scene.add(upperCeilingGrid);
+
+        // 8 Vertical Neon Boundary Pillars around Radius=145m
+        arenaPillarsGroup = new THREE.Group();
+        const pGeo = new THREE.CylinderGeometry(1.8, 1.8, 110, 8);
+
+        for (let i = 0; i < 8; i++) {
+          const ang = (i / 8) * Math.PI * 2;
+          const px = Math.sin(ang) * ARENA_RADIUS;
+          const pz = Math.cos(ang) * ARENA_RADIUS;
+
+          const pillar = new THREE.Mesh(pGeo, sharedWireCyanMat);
+          pillar.position.set(px, 55, pz);
+          arenaPillarsGroup.add(pillar);
+        }
+        scene.add(arenaPillarsGroup);
+      }
+
+      // =========================================================================
+      // SLEEK 3D AERODYNAMIC STARFIGHTER MODEL BUILDER
+      // =========================================================================
+      function createAerodynamicStarfighter(styleType, primaryHex, accentHex, titleName) {
+        const group = new THREE.Group();
+
+        const defaultEmissive = ENEMY_SPECS[styleType] ? ENEMY_SPECS[styleType].defaultEmissive : 0x020814;
+
+        const bodyMat = new THREE.MeshLambertMaterial({
+          color: 0x081026,
+          emissive: defaultEmissive,
+          flatShading: true
+        });
+
+        const canopyMat = new THREE.MeshBasicMaterial({ color: primaryHex, transparent: true, opacity: 0.85 });
+        const accentMat = new THREE.MeshBasicMaterial({ color: accentHex });
+
+        const exhaustList = [];
+
+        if (styleType === 'valkyrie' || styleType === 'viper') {
+          // Sharp Needle-Nose Cone
+          const noseGeo = new THREE.ConeGeometry(0.85, 5.2, 6);
+          noseGeo.rotateX(-Math.PI / 2);
+          const nose = new THREE.Mesh(noseGeo, bodyMat);
+          nose.position.set(0, 0, -2.6);
+          group.add(nose);
+
+          // Faceted Fuselage Body
+          const bodyGeo = new THREE.CylinderGeometry(0.9, 1.2, 5.5, 6);
+          bodyGeo.rotateX(-Math.PI / 2);
+          const body = new THREE.Mesh(bodyGeo, bodyMat);
+          body.position.set(0, 0, 1.2);
+          group.add(body);
+
+          // Canopy Glass
+          const canopyGeo = new THREE.OctahedronGeometry(0.85, 0);
+          canopyGeo.scale(0.8, 0.65, 2.2);
+          const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+          canopy.position.set(0, 0.65, -0.8);
+          group.add(canopy);
+
+          // Swept-Delta Wings
+          const wingShape = new THREE.Shape();
+          if (styleType === 'valkyrie') {
+            wingShape.moveTo(0, 2.0);
+            wingShape.lineTo(6.2, -2.2);
+            wingShape.lineTo(5.2, -3.2);
+            wingShape.lineTo(0, -1.2);
+            wingShape.lineTo(-5.2, -3.2);
+            wingShape.lineTo(-6.2, -2.2);
+          } else {
+            wingShape.moveTo(0, 2.5);
+            wingShape.lineTo(6.8, 0.5);
+            wingShape.lineTo(5.8, -1.5);
+            wingShape.lineTo(0, -1.0);
+            wingShape.lineTo(-5.8, -1.5);
+            wingShape.lineTo(-6.8, 0.5);
+          }
+          wingShape.closePath();
+
+          const extrudeSettings = { depth: 0.28, bevelEnabled: true, bevelSegments: 1, steps: 1, bevelSize: 0.1, bevelThickness: 0.1 };
+          const wingGeo = new THREE.ExtrudeGeometry(wingShape, extrudeSettings);
+          wingGeo.rotateX(Math.PI / 2);
+          wingGeo.center();
+          const wingMesh = new THREE.Mesh(wingGeo, bodyMat);
+          wingMesh.position.set(0, 0.1, 0.8);
+          group.add(wingMesh);
+
+          // Canted Twin V-Tail Fins
+          const finGeo = new THREE.BoxGeometry(0.12, 1.8, 1.6);
+          const finL = new THREE.Mesh(finGeo, bodyMat);
+          finL.position.set(-1.1, 1.0, 3.2);
+          finL.rotation.z = -Math.PI / 8;
+          const finR = new THREE.Mesh(finGeo, bodyMat);
+          finR.position.set(1.1, 1.0, 3.2);
+          finR.rotation.z = Math.PI / 8;
+          group.add(finL);
+          group.add(finR);
+
+          // Wingtip Laser Pods
+          [-5.6, 5.6].forEach(x => {
+            const podGeo = new THREE.CylinderGeometry(0.16, 0.16, 2.8, 6);
+            podGeo.rotateX(Math.PI / 2);
+            const pod = new THREE.Mesh(podGeo, accentMat);
+            pod.position.set(x, 0, 0.2);
+            group.add(pod);
+          });
+
+          // Twin Afterburners
+          [-1.0, 1.0].forEach(x => {
+            const nozzleGeo = new THREE.CylinderGeometry(0.45, 0.55, 1.4, 8);
+            nozzleGeo.rotateX(Math.PI / 2);
+            const nozzle = new THREE.Mesh(nozzleGeo, bodyMat);
+            nozzle.position.set(x, 0.1, 3.8);
+            group.add(nozzle);
+
+            const coneGeo = new THREE.ConeGeometry(0.4, 2.2, 8);
+            coneGeo.rotateX(-Math.PI / 2);
+            const exhaust = new THREE.Mesh(coneGeo, canopyMat);
+            exhaust.position.set(x, 0.1, 5.0);
+            group.add(exhaust);
+            exhaustList.push(exhaust);
+          });
+
+        } else if (styleType === 'railhawk') {
+          // Needle Slender Body
+          const noseGeo = new THREE.ConeGeometry(0.65, 6.5, 6);
+          noseGeo.rotateX(-Math.PI / 2);
+          const nose = new THREE.Mesh(noseGeo, bodyMat);
+          nose.position.set(0, 0, -3.2);
+          group.add(nose);
+
+          // Twin Forward Railgun Booms
+          [-1.8, 1.8].forEach(x => {
+            const boomGeo = new THREE.CylinderGeometry(0.18, 0.18, 7.5, 6);
+            boomGeo.rotateX(Math.PI / 2);
+            const boom = new THREE.Mesh(boomGeo, accentMat);
+            boom.position.set(x, 0, -2.5);
+            group.add(boom);
+          });
+
+          const canopyGeo = new THREE.OctahedronGeometry(0.75, 0);
+          canopyGeo.scale(0.7, 0.5, 2.5);
+          const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+          canopy.position.set(0, 0.55, -1.0);
+          group.add(canopy);
+
+        } else if (styleType === 'juggernaut' || styleType === 'boss') {
+          // Broad Armored Cyber-Gunship / Dreadnought
+          const coreGeo = new THREE.BoxGeometry(4.2, 1.8, 7.5);
+          const coreMesh = new THREE.Mesh(coreGeo, bodyMat);
+          coreMesh.position.set(0, 0, 0);
+          group.add(coreMesh);
+
+          const canopyGeo = new THREE.OctahedronGeometry(1.4, 0);
+          canopyGeo.scale(1.2, 0.8, 2.8);
+          const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+          canopy.position.set(0, 1.1, -1.8);
+          group.add(canopy);
+
+          const wingGeo = new THREE.BoxGeometry(14.0, 0.4, 4.2);
+          const wing = new THREE.Mesh(wingGeo, bodyMat);
+          wing.position.set(0, 0.1, 0.5);
+          group.add(wing);
+
+          // Quad Rear Thrusters
+          [-2.2, -0.8, 0.8, 2.2].forEach(x => {
+            const coneGeo = new THREE.ConeGeometry(0.5, 2.8, 8);
+            coneGeo.rotateX(-Math.PI / 2);
+            const exhaust = new THREE.Mesh(coneGeo, accentMat);
+            exhaust.position.set(x, 0, 4.8);
+            group.add(exhaust);
+            exhaustList.push(exhaust);
+          });
+
+          if (styleType === 'boss') {
+            const ringGeo = new THREE.TorusGeometry(8.5, 0.4, 8, 24);
+            ringGeo.rotateX(Math.PI / 2);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd700, wireframe: true });
+            const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+            ringMesh.position.set(0, 0.5, 0);
+            group.add(ringMesh);
+            group.userData.pylonRing = ringMesh;
+          }
+        }
+
+        // Aegis Shield Sphere Mesh
+        const shieldGeo = new THREE.SphereGeometry(3.6, 12, 12);
+        const shieldMat = new THREE.MeshBasicMaterial({ color: primaryHex, wireframe: true, transparent: true, opacity: 0 });
+        const guardShieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+        group.add(guardShieldMesh);
+
+        // GPU Unit Cylinder Altitude Drop-Line
+        const dropLineMesh = new THREE.Mesh(sharedUnitCylinderGeo, sharedWireCyanMat);
+
+        // Ground Ring Shadow
+        const groundRingMesh = new THREE.Mesh(sharedUnitRingGeo, new THREE.MeshBasicMaterial({ color: primaryHex, side: THREE.DoubleSide, transparent: true, opacity: 0.5 }));
+
+        return {
+          group: group,
+          bodyMat: bodyMat,
+          defaultEmissive: defaultEmissive,
+          exhaustList: exhaustList,
+          guardShieldMesh: guardShieldMesh,
+          dropLineMesh: dropLineMesh,
+          groundRingMesh: groundRingMesh,
+          primaryHex: primaryHex,
+          titleName: titleName
+        };
+      }
+
+      function updateDropLines(craftObj) {
+        const x = craftObj.group.position.x;
+        const y = craftObj.group.position.y;
+        const z = craftObj.group.position.z;
+
+        craftObj.dropLineMesh.position.set(x, y, z);
+        craftObj.dropLineMesh.scale.set(1, y, 1);
+
+        craftObj.groundRingMesh.position.set(x, 0.1, z);
+      }
+
+      function spawnAfterimageSilhouette(craftObj) {
+        for (let i = 0; i < afterimagesList.length; i++) {
+          const a = afterimagesList[i];
+          if (!a.active) {
+            a.active = true;
+            a.timer = 0.25;
+            a.mesh.position.copy(craftObj.group.position);
+            a.mesh.quaternion.copy(craftObj.group.quaternion);
+            a.mesh.visible = true;
+            return;
+          }
+        }
+      }
+
+      function initAfterimagePool() {
+        for (let i = 0; i < 8; i++) {
+          const ghost = createAerodynamicStarfighter('valkyrie', 0x00f3ff, 0x00f3ff, 'GHOST');
+          ghost.group.traverse(child => {
+            if (child.isMesh) child.material = sharedWireCyanMat;
+          });
+          ghost.group.visible = false;
+          scene.add(ghost.group);
+          afterimagesList.push({ mesh: ghost.group, active: false, timer: 0 });
+        }
+      }
+
+      function updateAfterimages(dt) {
+        for (let i = 0; i < afterimagesList.length; i++) {
+          const a = afterimagesList[i];
+          if (a.active) {
+            a.timer -= dt;
+            if (a.timer <= 0) {
+              a.active = false;
+              a.mesh.visible = false;
+            }
+          }
+        }
+      }
+
+      // =========================================================================
+      // 6. UI EVENT HANDLERS & TARGET LOCK SYSTEM
+      // =========================================================================
+      function updateMissionBriefing(lvlKey) {
+        const def = LEVEL_DEFS[lvlKey] || LEVEL_DEFS[1];
+        if (dom.briefTitle) dom.briefTitle.textContent = lvlKey === 'ENDLESS' ? 'ENDLESS SWARM' : ('LVL ' + lvlKey + ': ' + def.name);
+        if (dom.briefRating) dom.briefRating.textContent = 'DIFFICULTY: ' + def.rating;
+        if (dom.briefGoal) dom.briefGoal.textContent = lvlKey === 'ENDLESS' ? 'INFINITE STARFIGHTER SQUADS' : (def.waves.length + ' MULTI-ENEMY WAVES');
+        if (dom.briefSpeed) dom.briefSpeed.textContent = def.breakdownText;
+        if (dom.briefThreats) dom.briefThreats.textContent = def.threatText;
+      }
+
+      window.selectLevel = function (lvlKey) {
+        sfx.uiClick();
+        selectedLevelKey = lvlKey === 'ENDLESS' ? 'ENDLESS' : parseInt(lvlKey, 10);
+        if (isNaN(selectedLevelKey)) selectedLevelKey = lvlKey;
+
+        document.querySelectorAll('.level-btn').forEach(btn => {
+          const btnLvl = btn.getAttribute('data-lvl');
+          const isSel = (selectedLevelKey === 'ENDLESS' && btnLvl === 'ENDLESS') || (String(selectedLevelKey) === btnLvl);
+          btn.classList.toggle('active', isSel);
+        });
+
+        updateMissionBriefing(selectedLevelKey);
+      };
+
+      window.switchTargetLock = function () {
+        if (activeEnemyList.length === 0) return;
+        lockedTargetIndex = (lockedTargetIndex + 1) % activeEnemyList.length;
+        sfx.targetSwitch();
+      };
+
+      // Primary Weapon Trigger (Spacebar / Click / Mobile Shoot Button)
+      window.triggerPlayerFireOrMelee = function () {
+        if (gameState !== 'PLAYING') return;
+
+        const target = activeEnemyList[lockedTargetIndex];
+        const origin = tempVec3_1.copy(playerStarfighter.group.position);
+
+        let distToTarget = 999;
+        if (target) {
+          distToTarget = playerStarfighter.group.position.distanceTo(target.craftObj.group.position);
+        }
+
+        // Close-range Plasma Blade Lunge (< 34m, cooldown 0.55s)
+        if (target && distToTarget < 34.0) {
+          if (playerBladeCooldown > 0) return;
+          playerBladeCooldown = 0.55;
+
+          sfx.bladeSlash();
+          const dir = tempVec3_3.subVectors(target.craftObj.group.position, playerStarfighter.group.position).normalize();
+          playerStarfighter.group.position.addScaledVector(dir, Math.min(distToTarget - 3.5, 18));
+          spawnAfterimageSilhouette(playerStarfighter);
+
+          damageEnemy(target, 60, true);
+          bumpCombo();
+          triggerCameraShake(0.2, 1.8);
+          spawnExplosionParticles(target.craftObj.group.position, 0x00f3ff, 14);
+          spawnFloatingPopup('-60 BLADE SLASH!', '#00f3ff');
+        } else {
+          // Dual Plasma Volley (cooldown 0.19s, 14 dmg each -> 28 per volley)
+          if (playerFireTimer > 0) return;
+          playerFireTimer = 0.19;
+
+          sfx.laser();
+
+          // Forward direction along current 360° yaw
+          let fwdX = -Math.sin(playerYaw);
+          let fwdZ = -Math.cos(playerYaw);
+          let fireDir = tempVec3_3.set(fwdX, 0, fwdZ).normalize();
+
+          // Generous 40° forward-cone magnetic aim-assist within 180m
+          let bestAimEnemy = null;
+          let bestCos = Math.cos(40 * Math.PI / 180); // ~0.766
+
+          for (let i = 0; i < activeEnemyList.length; i++) {
+            const e = activeEnemyList[i];
+            const eDist = origin.distanceTo(e.craftObj.group.position);
+            if (eDist <= 180.0) {
+              const toEnemy = tempVec3_2.subVectors(e.craftObj.group.position, origin).normalize();
+              const dot = fireDir.dot(toEnemy);
+              if (dot > bestCos) {
+                bestCos = dot;
+                bestAimEnemy = e;
+              }
+            }
+          }
+
+          if (bestAimEnemy) {
+            const toTarget = tempVec3_2.subVectors(bestAimEnemy.craftObj.group.position, origin).normalize();
+            fireDir.lerp(toTarget, 0.70).normalize();
+          }
+
+          // Perpendicular wing offset vector
+          const sideX = Math.cos(playerYaw) * 4.2;
+          const sideZ = -Math.sin(playerYaw) * 4.2;
+
+          spawnPooledProjectile(tempVec3_1.copy(origin).add(tempVec3_2.set(sideX, 0, sideZ)), fireDir, 130, 0x00f3ff, true, 14);
+          spawnPooledProjectile(tempVec3_1.copy(origin).sub(tempVec3_2.set(sideX, 0, sideZ)), fireDir, 130, 0x00f3ff, true, 14);
+        }
+      };
+
+      window.triggerPlayerVanish = function () {
+        if (gameState !== 'PLAYING' || playerDashCooldown > 0) return;
+        playerDashCooldown = 1.0;
+        playerInvulnTimer = Math.max(playerInvulnTimer, 0.45);
+        sfx.dash();
+
+        spawnAfterimageSilhouette(playerStarfighter);
+
+        const target = activeEnemyList[lockedTargetIndex];
+        if (target && playerStarfighter.group.position.distanceTo(target.craftObj.group.position) < 45) {
+          const behindPos = tempVec3_1.copy(target.craftObj.group.position).add(
+            tempVec3_2.subVectors(target.craftObj.group.position, playerStarfighter.group.position).normalize().multiplyScalar(5.0)
+          );
+          playerStarfighter.group.position.copy(behindPos);
+          spawnAfterimageSilhouette(playerStarfighter);
+          addScore(250);
+          spawnFloatingPopup('⚡ ROLL DASH BEHIND TARGET! ⚡', '#ffd700');
+        } else {
+          playerStarfighter.group.position.x += (Math.random() - 0.5) * 20;
+          playerStarfighter.group.position.y += (Math.random() - 0.5) * 14;
+        }
+      };
+
+      window.triggerPlayerShield = function () {
+        if (gameState !== 'PLAYING') return;
+        playerShieldTimer = 0.6;
+        playerStarfighter.guardShieldMesh.material.opacity = 0.85;
+      };
+
+      window.activateOverdrive = function () {
+        if (gameState !== 'PLAYING' || overdriveCharge < 100 || overdriveActiveTimer > 0 || activeEnemyList.length === 0) return;
+
+        overdriveCharge = 0;
+        overdriveActiveTimer = 4.0;
+        playerInvulnTimer = 4.0;
+        sfx.beamFire();
+
+        const target = activeEnemyList[lockedTargetIndex];
+        novaBeamMesh.position.copy(playerStarfighter.group.position);
+        novaBeamMesh.lookAt(target.craftObj.group.position);
+        novaBeamMesh.visible = true;
+
+        for (let i = activeEnemyList.length - 1; i >= 0; i--) {
+          const e = activeEnemyList[i];
+          damageEnemy(e, 240, false);
+          spawnExplosionParticles(e.craftObj.group.position, 0xffd700, 20);
+        }
+
+        bumpCombo();
+        triggerCameraShake(0.6, 3.0);
+        spawnFloatingPopup('⚡ HYPER NOVA BEAM -240 DMG! ⚡', '#ffd700');
+        showBanner('⚡ HYPER OVERDRIVE NOVA ENGAGED ⚡', 'PIERCING SQUAD DESTRUCTION');
+      };
+
+      function bindUIEvents() {
+        document.querySelectorAll('.level-btn').forEach(btn => {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const lvl = this.getAttribute('data-lvl');
+            window.selectLevel(lvl);
+          });
+        });
+
+        if (dom.targetSwitchHudBtn) dom.targetSwitchHudBtn.addEventListener('click', (e) => { e.stopPropagation(); window.switchTargetLock(); });
+        if (dom.hyperHudBtn) dom.hyperHudBtn.addEventListener('click', (e) => { e.stopPropagation(); window.activateOverdrive(); });
+        if (dom.muteBtn) dom.muteBtn.addEventListener('click', (e) => { e.stopPropagation(); window.toggleMute(); });
+        if (dom.pauseBtn) dom.pauseBtn.addEventListener('click', (e) => { e.stopPropagation(); window.togglePause(); });
+
+        if (dom.startBtn) dom.startBtn.addEventListener('click', (e) => { e.stopPropagation(); sfx.uiClick(); window.startGame(); });
+        if (dom.resumeBtn) dom.resumeBtn.addEventListener('click', (e) => { e.stopPropagation(); sfx.uiClick(); window.togglePause(); });
+        if (dom.restartPauseBtn) dom.restartPauseBtn.addEventListener('click', (e) => { e.stopPropagation(); sfx.uiClick(); window.startGame(); });
+        if (dom.menuPauseBtn) dom.menuPauseBtn.addEventListener('click', (e) => { e.stopPropagation(); sfx.uiClick(); window.returnToMenu(); });
+
+        if (dom.nextLevelBtn) dom.nextLevelBtn.addEventListener('click', (e) => { e.stopPropagation(); sfx.uiClick(); window.nextLevel(); });
+        if (dom.restartGameOverBtn) dom.restartGameOverBtn.addEventListener('click', (e) => { e.stopPropagation(); sfx.uiClick(); window.startGame(); });
+        if (dom.menuGameOverBtn) dom.menuGameOverBtn.addEventListener('click', (e) => { e.stopPropagation(); sfx.uiClick(); window.returnToMenu(); });
+
+        // Mobile Touch Buttons
+        const btnShoot = document.getElementById('btnShoot');
+        const btnAscend = document.getElementById('btnAscend');
+        const btnDescend = document.getElementById('btnDescend');
+        const btnSwitch = document.getElementById('btnSwitch');
+        const btnDash = document.getElementById('btnDash');
+        const btnShield = document.getElementById('btnShield');
+        const btnNova = document.getElementById('btnNova');
+
+        if (btnShoot) {
+          btnShoot.addEventListener('touchstart', (e) => { e.stopPropagation(); touchBtns.shoot = true; });
+          btnShoot.addEventListener('touchend', (e) => { e.stopPropagation(); touchBtns.shoot = false; });
+        }
+        if (btnAscend) {
+          btnAscend.addEventListener('touchstart', (e) => { e.stopPropagation(); touchBtns.ascend = true; });
+          btnAscend.addEventListener('touchend', (e) => { e.stopPropagation(); touchBtns.ascend = false; });
+        }
+        if (btnDescend) {
+          btnDescend.addEventListener('touchstart', (e) => { e.stopPropagation(); touchBtns.descend = true; });
+          btnDescend.addEventListener('touchend', (e) => { e.stopPropagation(); touchBtns.descend = false; });
+        }
+        if (btnSwitch) btnSwitch.addEventListener('click', (e) => { e.stopPropagation(); window.switchTargetLock(); });
+        if (btnDash) btnDash.addEventListener('click', (e) => { e.stopPropagation(); window.triggerPlayerVanish(); });
+        if (btnShield) btnShield.addEventListener('click', (e) => { e.stopPropagation(); window.triggerPlayerShield(); });
+        if (btnNova) btnNova.addEventListener('click', (e) => { e.stopPropagation(); window.activateOverdrive(); });
+      }
+
+      // =========================================================================
+      // 7. WAVE SPAWNER & MAIN GAME LOOP
+      // =========================================================================
+      function spawnWaveEnemies(waveObj) {
+        activeEnemyList.forEach(e => {
+          scene.remove(e.craftObj.group);
+          scene.remove(e.craftObj.dropLineMesh);
+          scene.remove(e.craftObj.groundRingMesh);
+        });
+        activeEnemyList.length = 0;
+
+        const hpScale = selectedLevelKey === 'ENDLESS' ? Math.pow(1.12, currentWaveIndex) : 1.0;
+        const count = waveObj.enemies.length;
+
+        waveObj.enemies.forEach((cfg, idx) => {
+          const spec = ENEMY_SPECS[cfg.type] || ENEMY_SPECS.viper;
+          const nameStr = cfg.isLeader ? (spec.name + ' LEADER') : cfg.isCommander ? (spec.name + ' COMMANDER') : spec.name;
+
+          const craft = createAerodynamicStarfighter(cfg.type, spec.colorHex, 0xff007f, nameStr);
+
+          const angle = (idx / count) * Math.PI * 2;
+          const dist = 38 + Math.random() * 22;
+          craft.group.position.set(
+            playerStarfighter.group.position.x + Math.sin(angle) * dist,
+            20 + Math.random() * 25,
+            playerStarfighter.group.position.z + Math.cos(angle) * dist
+          );
+
+          scene.add(craft.group);
+          scene.add(craft.dropLineMesh);
+          scene.add(craft.groundRingMesh);
+
+          const hpVal = Math.round(spec.hp * (cfg.isLeader ? 1.5 : cfg.isCommander ? 1.8 : 1.0) * hpScale);
+
+          activeEnemyList.push({
+            type: cfg.type,
+            craftObj: craft,
+            hp: hpVal,
+            maxHp: hpVal,
+            speed: spec.speed,
+            radius: spec.rad,
+            flashTimer: 0,
+            actionTimer: Math.random() * 1.5,
+            actionState: 'IDLE'
+          });
+        });
+
+        lockedTargetIndex = 0;
+      }
+
+      function updateGame(dt, nowSec) {
+        if (gameState === 'MENU') {
+          playerStarfighter.group.position.set(0, 20, 0);
+          updateDropLines(playerStarfighter);
+          camera.position.set(0, 25, 45);
+          camera.lookAt(0, 15, 0);
+          return;
+        }
+
+        if (gameState !== 'PLAYING') return;
+
+        if (bannerTimer > 0) {
+          bannerTimer -= dt;
+          if (bannerTimer <= 0) dom.bannerToast.classList.add('hidden');
+        }
+
+        // Timers & Shield Auto-Regeneration
+        if (playerInvulnTimer > 0) playerInvulnTimer = Math.max(0, playerInvulnTimer - dt);
+        if (playerDashCooldown > 0) playerDashCooldown = Math.max(0, playerDashCooldown - dt);
+        if (playerFireTimer > 0) playerFireTimer = Math.max(0, playerFireTimer - dt);
+        if (playerBladeCooldown > 0) playerBladeCooldown = Math.max(0, playerBladeCooldown - dt);
+
+        if (nowSec - lastTimePlayerHit > 3.5 && playerShield < playerMaxShield) {
+          playerShield = Math.min(playerMaxShield, playerShield + 18.0 * dt);
+        }
+
+        if (playerShieldTimer > 0) {
+          playerShieldTimer = Math.max(0, playerShieldTimer - dt);
+          if (playerShieldTimer <= 0) playerStarfighter.guardShieldMesh.material.opacity = 0;
+        }
+
+        if (overdriveActiveTimer > 0) {
+          overdriveActiveTimer = Math.max(0, overdriveActiveTimer - dt);
+          if (activeEnemyList[lockedTargetIndex]) {
+            novaBeamMesh.position.copy(playerStarfighter.group.position);
+            novaBeamMesh.lookAt(activeEnemyList[lockedTargetIndex].craftObj.group.position);
+          }
+          if (overdriveActiveTimer <= 0) novaBeamMesh.visible = false;
+        }
+
+        if (comboHits > 0 && comboTimer > 0) {
+          comboTimer = Math.max(0, comboTimer - dt);
+          if (comboTimer === 0) comboHits = 0;
+        }
+
+        // Spacebar Continuous Shooting
+        if (isKeyDown('Space', ' ') || touchBtns.shoot) {
+          window.triggerPlayerFireOrMelee();
+        }
+
+        // =========================================================================
+        // DUAL KEYBOARD INPUT EVALUATION (e.code + e.key)
+        // =========================================================================
+        const forwardPressed = isKeyDown('KeyW', 'w');
+        const backwardPressed = isKeyDown('KeyS', 's');
+        const turnLeftPressed = isKeyDown('KeyA', 'a') || isKeyDown('ArrowLeft', 'arrowleft');
+        const turnRightPressed = isKeyDown('KeyD', 'd') || isKeyDown('ArrowRight', 'arrowright');
+        const ascendPressed = isKeyDown('KeyR', 'r') || isKeyDown('ArrowUp', 'arrowup') || touchBtns.ascend;
+        const descendPressed = isKeyDown('KeyC', 'c') || isKeyDown('ControlLeft', 'control') || isKeyDown('ControlRight', 'control') || isKeyDown('ArrowDown', 'arrowdown') || touchBtns.descend;
+
+        let thrust = 0;    // +1 (Forward), -1 (Backward)
+        let turnInput = 0; // +1 (Turn Left), -1 (Turn Right)
+        let vySignal = 0;  // +1 (Ascend UP), -1 (Descend DOWN)
+
+        if (forwardPressed) thrust += 1;
+        if (backwardPressed) thrust -= 1;
+        if (turnLeftPressed) turnInput += 1;
+        if (turnRightPressed) turnInput -= 1;
+        if (ascendPressed) vySignal += 1;
+        if (descendPressed) vySignal -= 1;
+
+        if (joystickMove.active) {
+          const jLen = Math.hypot(joystickMove.dx, joystickMove.dy);
+          if (jLen > 0.08) {
+            thrust = -joystickMove.dy;
+            turnInput = -joystickMove.dx;
+          }
+        }
+
+        // 1. Continuous 360-Degree Steering
+        const TURN_SPEED = 2.4; // rad/sec
+        if (turnInput !== 0) {
+          playerYaw += turnInput * TURN_SPEED * dt;
+        }
+        while (playerYaw > Math.PI) playerYaw -= Math.PI * 2;
+        while (playerYaw < -Math.PI) playerYaw += Math.PI * 2;
+
+        // 2. Unrestricted Forward (80 m/s) / Backward (55 m/s) Flight
+        const FORWARD_SPEED = 80.0;
+        const BACKWARD_SPEED = 55.0;
+
+        const fwdX = -Math.sin(playerYaw);
+        const fwdZ = -Math.cos(playerYaw);
+
+        let currentSpeed = 0;
+        if (thrust > 0) {
+          currentSpeed = FORWARD_SPEED * thrust;
+        } else if (thrust < 0) {
+          currentSpeed = BACKWARD_SPEED * thrust;
+        }
+
+        playerStarfighter.group.position.x += fwdX * currentSpeed * dt;
+        playerStarfighter.group.position.z += fwdZ * currentSpeed * dt;
+
+        // Visual Thruster Afterburner Elongation & Speed Particles
+        const isThrustingFwd = thrust > 0;
+        playerStarfighter.exhaustList.forEach(exhaustMesh => {
+          const s = isThrustingFwd ? 2.8 : 1.0;
+          exhaustMesh.scale.set(1, s, 1);
+        });
+
+        updateSpeedParticles(dt, playerStarfighter.group.position, fwdX, fwdZ, isThrustingFwd);
+
+        // 3. Strict Plane-Level Altitude Changes (52 m/s, pitch = 0)
+        const VERTICAL_SPEED = 52.0;
+        playerStarfighter.group.position.y = Math.max(4, Math.min(106, playerStarfighter.group.position.y + vySignal * VERTICAL_SPEED * dt));
+
+        // Smooth Wing Roll Banking (Up to ±0.45 rad), Pitch stays strictly 0
+        const targetRoll = turnInput * 0.45;
+        playerRoll += (targetRoll - playerRoll) * 10.0 * dt;
+
+        playerStarfighter.group.rotation.order = 'YXZ';
+        playerStarfighter.group.rotation.set(0, playerYaw, playerRoll, 'YXZ');
+
+        // Clamp to Outer Arena Perimeter (R = 140m)
+        const pDist = Math.hypot(playerStarfighter.group.position.x, playerStarfighter.group.position.z);
+        if (pDist > ARENA_RADIUS) {
+          playerStarfighter.group.position.x = (playerStarfighter.group.position.x / pDist) * ARENA_RADIUS;
+          playerStarfighter.group.position.z = (playerStarfighter.group.position.z / pDist) * ARENA_RADIUS;
+        }
+
+        updateDropLines(playerStarfighter);
+
+        // 4. Plane-Level 360-Degree Chase Camera
+        const camX = playerStarfighter.group.position.x - fwdX * 16.0;
+        const camZ = playerStarfighter.group.position.z - fwdZ * 16.0;
+        const camY = playerStarfighter.group.position.y + 4.6;
+
+        const lookX = playerStarfighter.group.position.x + fwdX * 18.0;
+        const lookY = playerStarfighter.group.position.y + 3.6;
+        const lookZ = playerStarfighter.group.position.z + fwdZ * 18.0;
+
+        let shakeOffsetX = 0, shakeOffsetY = 0;
+        if (cameraShakeTime > 0) {
+          cameraShakeTime -= dt;
+          shakeOffsetX = (Math.random() - 0.5) * cameraShakeMag;
+          shakeOffsetY = (Math.random() - 0.5) * cameraShakeMag;
+        }
+
+        camera.position.x += (camX + shakeOffsetX - camera.position.x) * 9.0 * dt;
+        camera.position.y += (camY + shakeOffsetY - camera.position.y) * 9.0 * dt;
+        camera.position.z += (camZ - camera.position.z) * 9.0 * dt;
+        camera.up.set(0, 1, 0);
+
+        camera.lookAt(lookX, lookY, lookZ);
+
+        // Active Enemies Update
+        for (let i = 0; i < activeEnemyList.length; i++) {
+          const e = activeEnemyList[i];
+          if (e.flashTimer > 0) {
+            e.flashTimer -= dt;
+            if (e.flashTimer <= 0) {
+              e.craftObj.bodyMat.emissive.setHex(e.craftObj.defaultEmissive);
+            }
+          }
+          updateDropLines(e.craftObj);
+          if (e.craftObj.group.userData.pylonRing) {
+            e.craftObj.group.userData.pylonRing.rotation.z += 1.2 * dt;
+          }
+          updateEnemyAI(e, dt);
+        }
+
+        // Target Overlays & Radar
+        updateTargetOverlays();
+        renderRadarCanvas();
+
+        // Update Pooled Systems
+        updateProjectiles(dt);
+        updateParticles(dt);
+        updatePopups(dt);
+        updateAfterimages(dt);
+
+        updateHUD();
+      }
+
+      function updateEnemyAI(enemy, dt) {
+        enemy.actionTimer -= dt;
+        const distToPlayer = enemy.craftObj.group.position.distanceTo(playerStarfighter.group.position);
+
+        if (enemy.actionTimer <= 0) {
+          enemy.actionTimer = 1.2 + Math.random() * 0.8;
+          const r = Math.random();
+          if (distToPlayer > 32) enemy.actionState = r < 0.7 ? 'APPROACH' : 'BLAST';
+          else if (distToPlayer < 10) enemy.actionState = r < 0.6 ? 'SLASH' : 'VANISH';
+          else enemy.actionState = r < 0.5 ? 'APPROACH' : 'BLAST';
+        }
+
+        enemy.craftObj.group.lookAt(playerStarfighter.group.position.x, enemy.craftObj.group.position.y, playerStarfighter.group.position.z);
+        const dir = tempVec3_1.subVectors(playerStarfighter.group.position, enemy.craftObj.group.position).normalize();
+
+        if (enemy.actionState === 'APPROACH') {
+          enemy.craftObj.group.position.addScaledVector(dir, enemy.speed * dt);
+        } else if (enemy.actionState === 'SLASH') {
+          enemy.craftObj.group.position.addScaledVector(dir, enemy.speed * 1.3 * dt);
+          if (distToPlayer < 5.5 && playerInvulnTimer <= 0) {
+            if (playerShieldTimer > 0) {
+              sfx.parry();
+              spawnFloatingPopup('PARRIED BY AEGIS SHIELD!', '#00f3ff');
+            } else {
+              sfx.laserHit();
+              damagePlayer(18);
+              spawnExplosionParticles(playerStarfighter.group.position, 0xff0055, 12);
+              spawnFloatingPopup('MELEE STRIKE! -18', '#ff0055');
+            }
+            enemy.actionState = 'IDLE';
+            enemy.actionTimer = 1.2;
+          }
+        } else if (enemy.actionState === 'BLAST') {
+          const origin = tempVec3_2.copy(enemy.craftObj.group.position).add(tempVec3_3.set(0, 0, -1.0));
+
+          if (enemy.type === 'railhawk') {
+            sfx.railCharge();
+            sfx.laser();
+            spawnPooledProjectile(origin, dir, 140, enemy.craftObj.primaryHex, false, 28);
+          } else if (enemy.type === 'juggernaut' || enemy.type === 'boss') {
+            sfx.laser();
+            [-0.2, 0, 0.2].forEach(offAngle => {
+              const spreadDir = tempVec3_3.copy(dir).applyAxisAngle(tempVec3_1.set(0, 1, 0), offAngle);
+              spawnPooledProjectile(origin, spreadDir, 100, enemy.craftObj.primaryHex, false, 12);
+            });
+          } else {
+            sfx.laser();
+            spawnPooledProjectile(origin, dir, 105, enemy.craftObj.primaryHex, false, 11);
+          }
+
+          enemy.actionState = 'IDLE';
+          enemy.actionTimer = 1.0;
+        } else if (enemy.actionState === 'VANISH') {
+          sfx.dash();
+          spawnAfterimageSilhouette(enemy.craftObj);
+          enemy.craftObj.group.position.x += (Math.random() - 0.5) * 18;
+          enemy.craftObj.group.position.y += (Math.random() - 0.5) * 12;
+          enemy.actionState = 'IDLE';
+          enemy.actionTimer = 0.8;
+        }
+      }
+
+      function updateProjectiles(dt) {
+        for (let i = 0; i < MAX_PROJECTILES; i++) {
+          const p = projectilePool[i];
+          if (!p.active) continue;
+
+          p.mesh.position.addScaledVector(p.dir, p.speed * dt);
+          p.life -= dt;
+
+          if (p.life <= 0 || p.mesh.position.distanceTo(playerStarfighter.group.position) > 160) {
+            p.active = false;
+            p.mesh.visible = false;
+            continue;
+          }
+
+          if (p.isPlayer) {
+            for (let k = activeEnemyList.length - 1; k >= 0; k--) {
+              const e = activeEnemyList[k];
+              if (p.mesh.position.distanceTo(e.craftObj.group.position) < p.radius + e.radius) {
+                p.active = false;
+                p.mesh.visible = false;
+
+                sfx.laserHit();
+                damageEnemy(e, p.dmg, false);
+                bumpCombo();
+                spawnExplosionParticles(e.craftObj.group.position, 0x00f3ff, 6);
+                spawnFloatingPopup('-' + p.dmg, '#00f3ff');
+                break;
+              }
+            }
+          } else {
+            if (p.mesh.position.distanceTo(playerStarfighter.group.position) < p.radius + 1.8) {
+              p.active = false;
+              p.mesh.visible = false;
+
+              if (playerInvulnTimer <= 0 && overdriveActiveTimer <= 0) {
+                if (playerShieldTimer > 0) {
+                  sfx.parry();
+                  spawnFloatingPopup('BLOCKED BY AEGIS SHIELD!', '#00f3ff');
+                } else {
+                  sfx.laserHit();
+                  damagePlayer(p.dmg);
+                  spawnExplosionParticles(playerStarfighter.group.position, 0xff0055, 10);
+                  spawnFloatingPopup('ENEMY BLAST! -' + p.dmg, '#ff0055');
+                }
+              }
+            }
+          }
+        }
+      }
+
+      function updateTargetOverlays() {
+        const target = activeEnemyList[lockedTargetIndex];
+        if (!target) {
+          dom.targetLockFrame.classList.add('hidden');
+          dom.offscreenArrow.classList.add('hidden');
+          return;
+        }
+
+        dom.targetLockFrame.classList.remove('hidden');
+
+        const dist = playerStarfighter.group.position.distanceTo(target.craftObj.group.position);
+        dom.targetTitleTag.textContent = target.craftObj.titleName;
+        dom.targetHpNumReadout.textContent = Math.round(target.hp) + ' / ' + target.maxHp + ' HP';
+        dom.targetDistTag.textContent = Math.round(dist) + 'M';
+
+        if (dist < 34.0) {
+          dom.targetActionPrompt.textContent = 'BLADE RANGE (<34m)';
+          dom.targetActionPrompt.style.color = '#ffd700';
+          dom.targetLockFrame.classList.add('melee-ready');
+        } else {
+          dom.targetActionPrompt.textContent = 'PLASMA RANGE';
+          dom.targetActionPrompt.style.color = '#00f3ff';
+          dom.targetLockFrame.classList.remove('melee-ready');
+        }
+
+        screenPosVec.copy(target.craftObj.group.position);
+        screenPosVec.project(camera);
+
+        const screenX = (screenPosVec.x * 0.5 + 0.5) * window.innerWidth;
+        const screenY = (-screenPosVec.y * 0.5 + 0.5) * window.innerHeight;
+
+        const isOffscreen = screenPosVec.z > 1.0 || screenX < 20 || screenX > window.innerWidth - 20 || screenY < 20 || screenY > window.innerHeight - 20;
+
+        if (isOffscreen) {
+          dom.targetLockFrame.classList.add('hidden');
+          dom.offscreenArrow.classList.remove('hidden');
+
+          const cx = window.innerWidth * 0.5;
+          const cy = window.innerHeight * 0.5;
+          const angle = Math.atan2(screenY - cy, screenX - cx);
+
+          const edgeX = Math.max(40, Math.min(window.innerWidth - 40, cx + Math.cos(angle) * (cx - 50)));
+          const edgeY = Math.max(40, Math.min(window.innerHeight - 40, cy + Math.sin(angle) * (cy - 50)));
+
+          dom.offscreenArrow.style.left = edgeX + 'px';
+          dom.offscreenArrow.style.top = edgeY + 'px';
+          dom.offscreenArrow.style.transform = `translate(-50%, -50%) rotate(${angle + Math.PI / 2}rad)`;
+        } else {
+          dom.offscreenArrow.classList.add('hidden');
+          dom.targetLockFrame.style.left = screenX + 'px';
+          dom.targetLockFrame.style.top = screenY + 'px';
+        }
+      }
+
+      function renderRadarCanvas() {
+        if (!radarCtx) return;
+
+        radarCtx.clearRect(0, 0, 96, 96);
+        const cx = 48, cy = 48;
+        const scale = 48 / ARENA_RADIUS;
+
+        // Player dot in center
+        radarCtx.fillStyle = '#00f3ff';
+        radarCtx.beginPath();
+        radarCtx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+        radarCtx.fill();
+
+        // Heading Cone
+        const coneX = cx - Math.sin(playerYaw) * 12;
+        const coneY = cy - Math.cos(playerYaw) * 12;
+        radarCtx.strokeStyle = 'rgba(0, 243, 255, 0.6)';
+        radarCtx.lineWidth = 1.5;
+        radarCtx.beginPath();
+        radarCtx.moveTo(cx, cy);
+        radarCtx.lineTo(coneX, coneY);
+        radarCtx.stroke();
+
+        // Enemies
+        activeEnemyList.forEach((e, idx) => {
+          const dx = (e.craftObj.group.position.x - playerStarfighter.group.position.x) * scale;
+          const dz = (e.craftObj.group.position.z - playerStarfighter.group.position.z) * scale;
+
+          const rx = cx + dx;
+          const ry = cy + dz;
+
+          if (rx >= 4 && rx <= 92 && ry >= 4 && ry <= 92) {
+            const isLocked = idx === lockedTargetIndex;
+            radarCtx.fillStyle = isLocked ? '#ffd700' : '#ff0055';
+            radarCtx.beginPath();
+            radarCtx.arc(rx, ry, isLocked ? 4.5 : 3, 0, Math.PI * 2);
+            radarCtx.fill();
+
+            const altDiff = e.craftObj.group.position.y - playerStarfighter.group.position.y;
+            if (Math.abs(altDiff) > 4) {
+              radarCtx.font = '8px sans-serif';
+              radarCtx.fillText(altDiff > 0 ? '+' : '-', rx + 5, ry + 3);
+            }
+          }
+        });
+      }
+
+      function damagePlayer(amount) {
+        lastTimePlayerHit = performance.now() * 0.001;
+
+        if (playerShield > 0) {
+          if (playerShield >= amount) {
+            playerShield -= amount;
+            amount = 0;
+          } else {
+            amount -= playerShield;
+            playerShield = 0;
+          }
+        }
+
+        if (amount > 0) {
+          playerHp = Math.max(0, playerHp - amount);
+          triggerCameraShake(0.3, 1.5);
+          if (playerHp <= 0) triggerGameOver(false);
+        }
+      }
+
+      function damageEnemy(target, amount, isBlade) {
+        target.hp = Math.max(0, target.hp - amount);
+        target.flashTimer = 0.09;
+        target.craftObj.bodyMat.emissive.setHex(0xffffff);
+
+        overdriveCharge = Math.min(100, overdriveCharge + 10);
+        addScore(amount * 10);
+
+        if (target.hp <= 0) {
+          totalEnemiesKilled++;
+          sfx.explosion();
+          spawnExplosionParticles(target.craftObj.group.position, 0xffd700, 24);
+
+          scene.remove(target.craftObj.group);
+          scene.remove(target.craftObj.dropLineMesh);
+          scene.remove(target.craftObj.groundRingMesh);
+
+          const idx = activeEnemyList.indexOf(target);
+          if (idx !== -1) activeEnemyList.splice(idx, 1);
+
+          if (activeEnemyList.length > 0) {
+            lockedTargetIndex = 0;
+          } else {
+            checkWaveProgress();
+          }
+        }
+      }
+
+      function checkWaveProgress() {
+        const def = LEVEL_DEFS[selectedLevelKey] || LEVEL_DEFS[1];
+
+        if (selectedLevelKey === 'ENDLESS') {
+          currentWaveIndex++;
+          spawnWaveEnemies({
+            enemies: [
+              { type: 'viper' }, { type: 'railhawk' }, { type: 'juggernaut' },
+              { type: Math.random() < 0.5 ? 'viper' : 'railhawk' }
+            ]
+          });
+          showBanner('ENDLESS SWARM', 'WAVE ' + (currentWaveIndex + 1) + ' ARRIVED');
+        } else {
+          currentWaveIndex++;
+          if (currentWaveIndex < def.waves.length) {
+            spawnWaveEnemies(def.waves[currentWaveIndex]);
+            showBanner('SQUAD WAVE CLEARED', def.waves[currentWaveIndex].name + ' ENGAGED');
+          } else {
+            sfx.victory();
+            triggerGameOver(true);
+          }
+        }
+      }
+
+      function bumpCombo() {
+        comboHits++;
+        if (comboHits > maxComboHits) maxComboHits = comboHits;
+        comboTimer = 3.5;
+      }
+
+      function addScore(pts) {
+        score += pts;
+        if (score > highScore) {
+          highScore = score;
+          safeSetHighScore(highScore);
+        }
+      }
+
+      function triggerCameraShake(dur, mag) {
+        cameraShakeTime = dur;
+        cameraShakeMag = mag;
+      }
+
+      function updateHUD() {
+        const sStr = score.toLocaleString();
+        if (cachedScoreText !== sStr) {
+          dom.scoreVal.textContent = sStr;
+          cachedScoreText = sStr;
+        }
+        dom.highScoreVal.textContent = highScore.toLocaleString();
+
+        const def = LEVEL_DEFS[selectedLevelKey] || LEVEL_DEFS[1];
+        if (selectedLevelKey === 'ENDLESS') {
+          dom.waveTitleText.textContent = 'ENDLESS SWARM — WAVE ' + (currentWaveIndex + 1);
+          dom.waveSubtitleText.textContent = 'HOSTILES REMAINING: ' + activeEnemyList.length;
+        } else if (def.waves[currentWaveIndex]) {
+          dom.waveTitleText.textContent = 'LVL ' + selectedLevelKey + ': ' + def.name + ' — ' + def.waves[currentWaveIndex].name;
+          dom.waveSubtitleText.textContent = 'HOSTILES REMAINING: ' + activeEnemyList.length;
+        }
+
+        const pPct = Math.max(0, Math.min(100, Math.round((playerHp / playerMaxHp) * 100)));
+        const shdPct = Math.max(0, Math.min(100, Math.round((playerShield / playerMaxShield) * 100)));
+
+        dom.playerHpText.textContent = Math.round(playerHp) + ' / ' + playerMaxHp + ' HP (+' + Math.round(playerShield) + ' SHD)';
+        dom.playerHpFill.style.width = pPct + '%';
+        dom.playerShieldFill.style.width = (shdPct * 0.4) + '%';
+
+        const target = activeEnemyList[lockedTargetIndex];
+        if (target) {
+          dom.targetNameText.textContent = 'TARGET: ' + target.craftObj.titleName;
+          const tPct = Math.max(0, Math.min(100, Math.round((target.hp / target.maxHp) * 100)));
+          dom.targetHpText.textContent = Math.round(target.hp) + ' / ' + target.maxHp + ' HP';
+          dom.targetHpFill.style.width = tPct + '%';
+        } else {
+          dom.targetNameText.textContent = 'NO TARGET LOCKED';
+          dom.targetHpText.textContent = '0 / 0 HP';
+          dom.targetHpFill.style.width = '0%';
+        }
+
+        const cStr = comboHits + ' HIT';
+        if (cachedComboText !== cStr) {
+          dom.comboVal.textContent = cStr;
+          cachedComboText = cStr;
+        }
+
+        let text = '';
+        let pct = 0;
+        let ready = false;
+        if (overdriveActiveTimer > 0) {
+          text = 'NOVA BEAM ' + overdriveActiveTimer.toFixed(1) + 's';
+          pct = Math.round((overdriveActiveTimer / 4.0) * 100);
+          ready = true;
+        } else if (overdriveCharge >= 100) {
+          text = 'HYPER BEAM READY!';
+          pct = 100;
+          ready = true;
+        } else {
+          text = 'OVERDRIVE ' + Math.floor(overdriveCharge) + '%';
+          pct = Math.floor(overdriveCharge);
+          ready = false;
+        }
+
+        if (cachedHyperText !== text) {
+          dom.hyperLabelVal.textContent = text;
+          dom.hyperBarFill.style.width = pct + '%';
+          dom.hyperHudBtn.classList.toggle('hyper-ready', ready);
+          cachedHyperText = text;
+        }
+      }
+
+      function showBanner(sub, title) {
+        dom.bannerSubText.textContent = sub;
+        dom.bannerTitleText.textContent = title;
+        dom.bannerToast.classList.remove('hidden');
+        bannerTimer = 2.2;
+      }
+
+      // =========================================================================
+      // 8. LIFECYCLE CONTROLLERS & KEYBOARD HANDLERS
+      // =========================================================================
+      window.startGame = function () {
+        ensureAudio();
+        score = 0;
+        highScore = safeGetHighScore();
+        comboHits = 0;
+        maxComboHits = 0;
+        comboTimer = 0;
+        totalEnemiesKilled = 0;
+
+        playerHp = 250;
+        playerMaxHp = 250;
+        playerShield = 100;
+        playerMaxShield = 100;
+        lastTimePlayerHit = 0;
+        currentWaveIndex = 0;
+
+        playerYaw = 0;
+        playerRoll = 0;
+
+        overdriveCharge = 0;
+        overdriveActiveTimer = 0;
+        playerInvulnTimer = 1.5;
+
+        playerStarfighter.group.position.set(0, 20, 0);
+        playerStarfighter.group.rotation.set(0, 0, 0, 'YXZ');
+        afterimagesList.forEach(a => {
+          a.active = false;
+          a.mesh.visible = false;
+        });
+
+        const def = LEVEL_DEFS[selectedLevelKey] || LEVEL_DEFS[1];
+        if (selectedLevelKey === 'ENDLESS') {
+          spawnWaveEnemies({
+            enemies: [{ type: 'viper' }, { type: 'viper' }, { type: 'railhawk' }]
+          });
+        } else {
+          spawnWaveEnemies(def.waves[0]);
+        }
+
+        gameState = 'PLAYING';
+        dom.menuModal.classList.add('hidden');
+        dom.pauseModal.classList.add('hidden');
+        dom.gameOverModal.classList.add('hidden');
+
+        updateHUD();
+        showBanner('3D SQUAD BATTLE ENGAGED', def.name);
+      };
+
+      window.nextLevel = function () {
+        if (typeof selectedLevelKey === 'number' && selectedLevelKey < 5) {
+          selectedLevelKey++;
+        }
+        window.startGame();
+      };
+
+      window.returnToMenu = function () {
+        gameState = 'MENU';
+        dom.pauseModal.classList.add('hidden');
+        dom.gameOverModal.classList.add('hidden');
+        dom.menuModal.classList.remove('hidden');
+        updateMissionBriefing(selectedLevelKey);
+      };
+
+      window.togglePause = function () {
+        if (gameState === 'PLAYING') {
+          gameState = 'PAUSED';
+          dom.pauseModal.classList.remove('hidden');
+        } else if (gameState === 'PAUSED') {
+          gameState = 'PLAYING';
+          dom.pauseModal.classList.add('hidden');
+        }
+        if (dom.pauseBtn) dom.pauseBtn.textContent = gameState === 'PAUSED' ? '▶' : '❚❚';
+      };
+
+      window.toggleMute = function () {
+        isMuted = !isMuted;
+        if (dom.muteBtn) dom.muteBtn.textContent = isMuted ? 'SFX: OFF' : 'SFX: ON';
+        if (!isMuted) ensureAudio();
+      };
+
+      function triggerGameOver(isVictory) {
+        gameState = isVictory ? 'VICTORY' : 'GAMEOVER';
+        const isRecord = score > 0 && score >= highScore;
+        safeSetHighScore(highScore);
+
+        if (isVictory) {
+          dom.modalHeaderSub.textContent = 'ALL HOSTILE WAVES ELIMINATED';
+          dom.modalHeaderTitle.textContent = 'MISSION VICTORY';
+          dom.nextLevelBtn.classList.toggle('hidden', selectedLevelKey === 5 || selectedLevelKey === 'ENDLESS');
+        } else {
+          dom.modalHeaderSub.textContent = 'VALKYRIE-X STARFIGHTER DESTROYED';
+          dom.modalHeaderTitle.textContent = 'MISSION FAILED';
+          dom.nextLevelBtn.classList.add('hidden');
+        }
+
+        dom.finalScoreVal.textContent = score.toLocaleString();
+        dom.finalBestVal.textContent = highScore.toLocaleString();
+        dom.finalKillsVal.textContent = totalEnemiesKilled.toLocaleString();
+        dom.finalComboVal.textContent = maxComboHits + ' HIT';
+        dom.menuHighScore.textContent = highScore.toLocaleString();
+        dom.newRecordBadge.classList.toggle('hidden', !isRecord);
+
+        dom.bannerToast.classList.add('hidden');
+        dom.gameOverModal.classList.remove('hidden');
+      }
+
+      // Main Animation Loop
+      let lastTime = 0;
+      function animate(nowMs) {
+        window.requestAnimationFrame(animate);
+        if (!lastTime) lastTime = nowMs;
+        const dt = Math.min(0.05, (nowMs - lastTime) * 0.001);
+        lastTime = nowMs;
+
+        updateGame(dt, nowMs * 0.001);
+        if (renderer && scene && camera) {
+          renderer.render(scene, camera);
+        }
+      }
+
+      // Initialize Application
+      window.onload = function () {
+        initThreeJS();
+        initAfterimagePool();
+        bindUIEvents();
+        updateMissionBriefing(selectedLevelKey);
+        dom.menuHighScore.textContent = highScore.toLocaleString();
+        animate(0);
+      };
+
+      // Focus & Key State Management
+      window.addEventListener('blur', clearAllKeys);
+      window.addEventListener('click', () => { window.focus(); });
+
+      document.addEventListener('keydown', function (e) {
+        if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) {
+          e.preventDefault();
+        }
+
+        keys[e.code] = true;
+        if (e.key) keys['char_' + e.key.toLowerCase()] = true;
+
+        if (e.code === 'KeyM' || e.key.toLowerCase() === 'm') { window.toggleMute(); return; }
+        if (e.code === 'KeyP' || e.key.toLowerCase() === 'p' || e.code === 'Escape') {
+          if (gameState === 'PLAYING' || gameState === 'PAUSED') { e.preventDefault(); window.togglePause(); }
+          return;
+        }
+        if (e.code === 'Tab' || e.code === 'KeyE' || e.key.toLowerCase() === 'e') {
+          if (gameState === 'PLAYING') { e.preventDefault(); window.switchTargetLock(); }
+        }
+        if (e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'KeyL' || e.key.toLowerCase() === 'l') {
+          if (gameState === 'PLAYING') { e.preventDefault(); window.triggerPlayerVanish(); }
+        }
+        if (e.code === 'KeyG' || e.key.toLowerCase() === 'g' || e.code === 'KeyX' || e.key.toLowerCase() === 'x') {
+          if (gameState === 'PLAYING') { e.preventDefault(); window.triggerPlayerShield(); }
+        }
+        if (e.code === 'KeyQ' || e.key.toLowerCase() === 'q' || e.code === 'KeyV' || e.key.toLowerCase() === 'v') {
+          if (gameState === 'PLAYING') { e.preventDefault(); window.activateOverdrive(); }
+          else if (gameState === 'MENU' || gameState === 'GAMEOVER') { e.preventDefault(); window.startGame(); }
+        }
+      });
+
+      document.addEventListener('keyup', function (e) {
+        if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) {
+          e.preventDefault();
+        }
+        keys[e.code] = false;
+        if (e.key) keys['char_' + e.key.toLowerCase()] = false;
+      });
+
+      // Canvas Mouse Controls
+      canvas.addEventListener('mousedown', function (e) {
+        if (gameState !== 'PLAYING') return;
+        if (e.button === 0) window.triggerPlayerFireOrMelee();
+        else if (e.button === 2) {
+          e.preventDefault();
+          window.triggerPlayerVanish();
+        }
+      });
+
+      canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+      // Mobile Touch Joystick Handler
+      const movePad = document.getElementById('moveJoystick');
+      const moveKnob = document.getElementById('moveKnob');
+
+      ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(evt => {
+        document.addEventListener(evt, e => {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (!joystickMove.active && evt === 'touchstart') {
+              const rect = movePad.getBoundingClientRect();
+              const cx = rect.left + rect.width * 0.5;
+              const cy = rect.top + rect.height * 0.5;
+              if (Math.hypot(t.clientX - cx, t.clientY - cy) < 60) {
+                joystickMove.active = true;
+                joystickMove.id = t.identifier;
+                joystickMove.startX = cx;
+                joystickMove.startY = cy;
+              }
+            }
+            if (joystickMove.active && t.identifier === joystickMove.id) {
+              if (evt === 'touchend' || evt === 'touchcancel') {
+                joystickMove.active = false;
+                joystickMove.id = null;
+                joystickMove.dx = 0; joystickMove.dy = 0;
+                moveKnob.style.transform = 'translate(-50%, -50%)';
+              } else {
+                let dx = t.clientX - joystickMove.startX;
+                let dy = t.clientY - joystickMove.startY;
+                const dist = Math.hypot(dx, dy);
+                const maxR = 40;
+                if (dist > maxR) { dx = (dx / dist) * maxR; dy = (dy / dist) * maxR; }
+                joystickMove.dx = dx / maxR;
+                joystickMove.dy = dy / maxR;
+                moveKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+              }
+            }
+          }
+        }, { passive: true });
+      });
+
+    })();
+  </script>
+</body>
+</html>
